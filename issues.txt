@@ -1,0 +1,16 @@
+issue with lab 2 as throwing lab4 flag as well remove for RSA
+
+Resolved -issue for 5060 is with my system too. correct issue found by sumer .
+important resolve it for better showcase to students for lab 6-7
+
+lab 9 is standalone good one
+
+
+MCP lab need to figure better way to use llm for making it chat intutive. 
+Like for dep chain injeciton lab 8- process data show all in attacker dashboard but need somehting in the llm chat as well. 
+
+Add Guardrail mitigation for lab post.
+- Agent in attacker dashboard thinking shows while mitigation.
+
+
+

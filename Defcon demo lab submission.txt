@@ -1,0 +1,73 @@
+The demonstration introduces ASI04 – Agentic AI Supply Chain Vulnerabilities Lab, a hands-on security platform designed to illustrate real-world attack vectors against AI agent ecosystems. The lab is based on ASI04: Agentic Supply Chain Vulnerabilities from the OWASP Top 10 for Agentic Applications and demonstrates how attackers can compromise agents through manipulated dependencies, malicious tools, poisoned knowledge bases, and compromised service integrations.
+
+The demo environment simulates a realistic agent ecosystem composed of package registries, tool registries, model context protocol (MCP) servers, and retrieval-augmented generation (RAG) knowledge sources. Participants can interact with a vulnerable AI agent and observe how supply chain attacks propagate across the agent workflow.
+
+Demonstration Flow
+1. Introduction to Agentic AI Supply Chains (5 minutes)
+
+The session begins with a brief explanation of how modern agentic systems interact with external ecosystems. The demonstration will highlight the security implications of agents that automatically install dependencies, fetch tools, and ingest external data sources.
+
+This section establishes the attack surface associated with agent supply chains and explains the motivation behind the ASI04 security category.
+
+2. Lab Architecture Overview (5 minutes)
+
+The ASI04 environment is composed of multiple containerized services that emulate a real-world AI agent ecosystem. Key components include:
+
+-a vulnerable AI agent interface
+
+-a CTF challenge dashboard
+
+-a simulated attacker monitoring dashboard
+
+-malicious MCP tool servers
+
+-a poisoned tool registry
+
+-a fake package registry for dependency attacks
+
+-a RAG knowledge base used by the agent
+
+-an anomaly detection engine for monitoring agent behavior
+
+This architecture enables realistic demonstrations of how supply chain attacks occur in agent-based automation platforms.
+
+3. Live Attack Demonstrations (25 minutes)
+
+The core portion of the session will demonstrate several attack scenarios against the agent platform.
+
+-Typosquatting Attack,Dependency Confusion ,Malicious MCP Server ,Poisoned Tool Descriptors ,RAG Knowledge Base Poisoning
+
+Each attack is triggered live and its impact is visualized through the attacker dashboard.
+
+4. MCP Ecosystem Attack Chain (5 minutes)
+
+The demonstration concludes with a simulated multi-step attack across the Model Context Protocol ecosystem. Malicious services intercept communications, inject hidden dependencies, and manipulate outputs produced by the agent.
+
+An anomaly detection engine will then analyze agent activity to identify indicators of compromise within the ecosystem.
+
+Key Takeaways
+
+Attendees will gain insight into how supply chain attacks affect modern AI agent systems and why traditional application security controls are insufficient for autonomous agents.
+
+The session provides a practical view of the emerging agentic software supply chain attack surface and demonstrates how these vulnerabilities can be exploited and detected.
+
+Target Audience
+
+This demo is relevant for:
+
+-AI security researchers
+
+-DevSecOps engineers
+
+-cloud and platform security teams
+
+-red team practitioners
+
+-developers building AI agents and automation platforms
+
+Tool Availability
+
+The ASI04 lab environment is containerized and designed to be reproducible. Attendees can deploy the lab locally to explore the attack scenarios and experiment with mitigations for securing agent supply chains.
+
+Link
+https://github.com/syedDS/ASI4-Labs-V2

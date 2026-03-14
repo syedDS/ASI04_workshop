@@ -1,0 +1,13 @@
+# Modelfile — deterministic llama3.2:1b for ASI04 lab
+# Usage: ollama create asi04-llm -f Modelfile
+#
+# Pins temperature=0 + seed=42 so lab outputs are reproducible
+# across runs on the same hardware + Ollama version.
+
+FROM llama3.2:1b
+
+PARAMETER temperature 0
+PARAMETER seed 42
+PARAMETER top_p 1
+PARAMETER top_k 1
+PARAMETER num_predict 512

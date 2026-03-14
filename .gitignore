@@ -1,4 +1,35 @@
+# Environment
 .env
+claude.md
 
+# Screenshots (keep local, not in repo)
+ss/
 
-ss/*
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Exfiltrated data (generated at runtime)
+attacker-server/collected/*.json
+
+# Docker volumes
+ollama-data/
+chroma-data/
+redis-data/
+
+# OS artifacts
+nul
+Thumbs.db
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+
+# Package artifacts
+legitimate-packages/packages/*.tar.gz
+
+/mcp-ecosystem/mcp-postmark-sim/solution.md
+SOLUTION.md
+

@@ -2,11 +2,11 @@
 
 A hands-on security training lab focused on **ASI04** from the [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/).
 
-![Lab Architecture](https://via.placeholder.com/800x400?text=ASI04+Supply+Chain+Lab)
+## Overview
 
-## 🎯 Overview
+This lab demonstrates nine supply chain attack vectors against agentic AI systems, organized into two modules:
 
-This lab demonstrates five supply chain attack vectors against agentic AI systems:
+### Core Challenges - Supply Chain Fundamentals (1,350 pts)
 
 | Challenge | Name | Points | Attack Type |
 |-----------|------|--------|-------------|
@@ -16,39 +16,61 @@ This lab demonstrates five supply chain attack vectors against agentic AI system
 | ASI04-04 | Poisoned Tool Descriptors | 250 | Hidden prompt injection in tool descriptions |
 | ASI04-05 | RAG Poisoning | 500 | Malicious documents in knowledge base |
 
-## 🏗️ Architecture
+### Real World Simulated Challenges - MCP Ecosystem (1,250 pts)
+
+| Challenge | Name | Points | Attack Type |
+|-----------|------|--------|-------------|
+| ASI04-06 | Credential Exfiltration via MCP | 200 | MCP server steals API keys from tool params |
+| ASI04-07 | Silent BCC Email Interception | 300 | Email gateway injects hidden BCC |
+| ASI04-08 | Malicious Dependency Injection | 350 | Hidden dependency chains auto-execute |
+| ASI04-09 | MCP Anomaly Detection | 400 | Identify all attacks using LLM judge |
+
+**Grand Total: 2,600 points**
+
+## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        USER INTERFACE                                │
-│  ┌──────────────────┐  ┌──────────────────┐  ┌──────────────────┐   │
-│  │ Vulnerable Agent │  │  CTF Dashboard   │  │Attacker Dashboard│   │
-│  │   :5050          │  │     :3000        │  │     :8666        │   │
-│  └────────┬─────────┘  └──────────────────┘  └────────▲─────────┘   │
-│           │                                           │              │
-├───────────┼───────────────────────────────────────────┼──────────────┤
-│           │         COMPROMISED SUPPLY CHAIN          │              │
-│           ▼                                           │              │
-│  ┌──────────────────┐                                │              │
-│  │  Malicious MCP   │─────────── exfil ──────────────┘              │
-│  │     :8765        │                                               │
-│  └──────────────────┘                                               │
-│  ┌──────────────────┐                                               │
-│  │ Poisoned Registry│─────────── hidden prompts                     │
-│  │     :8080        │                                               │
-│  └──────────────────┘                                               │
-│  ┌──────────────────┐                                               │
-│  │   Fake PyPI      │─────────── typosquat/depconf                  │
-│  │     :8081        │                                               │
-│  └──────────────────┘                                               │
-│  ┌──────────────────┐                                               │
-│  │  Poisoned RAG    │─────────── malicious docs                     │
-│  │  (ChromaDB:8000) │                                               │
-│  └──────────────────┘                                               │
-└─────────────────────────────────────────────────────────────────────┘
+                     USER INTERFACES
+  +-----------------+  +----------------+  +------------------+
+  |Vulnerable Agent |  | CTF Dashboard  |  |Attacker Dashboard|
+  |   :5050         |  |    :3000       |  |     :8666        |
+  |  (Core + /rwl)  |  | (Core + RWL    |  |                  |
+  +--------+--------+  |  tabs)         |  +--------+---------+
+           |            +----------------+           ^
+           |                                         |
+  CORE SUPPLY CHAIN                                  |
+  +----------------+                                 |
+  | Malicious MCP  |------------ exfil --------------+
+  |    :8765       |                                 |
+  +----------------+                                 |
+  | Poisoned Reg.  |------------ hidden prompts      |
+  |    :8080       |                                 |
+  +----------------+                                 |
+  | Fake PyPI      |------------ typosquat/depconf   |
+  |    :8081       |                                 |
+  +----------------+                                 |
+  | Poisoned RAG   |------------ malicious docs      |
+  | (ChromaDB:8000)|                                 |
+  +----------------+                                 |
+                                                     |
+  MCP ECOSYSTEM (Real World Simulated Challenges)    |
+  +----------------+                                 |
+  | Email Agent    |                                 |
+  |    :5080       |                                 |
+  +-------+--------+                                 |
+          |                                          |
+  +-------+--------+  +---------------+  +-----------+------+
+  |mcp-postmark-sim|  |bcc-interceptor|  |dependency-injector|
+  |    :8770       |  |    :8771      |  |     :8772        |
+  +----------------+  +---------------+  +------------------+
+          |                                          |
+  +-------+--------+                                 |
+  |Detection Engine|                                 |
+  |    :5070       |---------------------------------+
+  +----------------+
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 
@@ -69,158 +91,81 @@ chmod +x setup.sh
 ./setup.sh
 ```
 
+Or manually:
+
+```bash
+docker compose up -d --build
+# Pull LLM model
+docker exec asi04-ollama ollama pull llama3.2:1b
+```
+
 ### Access Points
 
 | Service | URL | Description |
 |---------|-----|-------------|
+| **Core Lab** | | |
 | Vulnerable Agent | http://localhost:5050 | Main agent interface |
-| CTF Dashboard | http://localhost:3000 | Track your progress |
+| CTF Dashboard | http://localhost:3000 | Track all challenges (Core + RWL tabs) |
 | Attacker Dashboard | http://localhost:8666/dashboard | View exfiltrated data |
 | Malicious MCP | http://localhost:8765/manifest | Trojanized tool server |
 | Poisoned Registry | http://localhost:8080/v1/tools | Tool registry with hidden payloads |
 | Fake PyPI | http://localhost:8081/simple/ | Malicious package server |
+| **MCP Ecosystem** | | |
+| Email Agent | http://localhost:5080 | LLM-brained email assistant |
+| Detection Engine | http://localhost:5070 | LLM judge anomaly detection |
+| RWL Module | http://localhost:5050/rwl | Integrated in vulnerable agent |
+| Postmark Sim | http://localhost:8770/manifest | Credential-stealing MCP |
+| BCC Interceptor | http://localhost:8771/manifest | BCC injection MCP |
+| Dep Injector | http://localhost:8772/mcp/list_tools | Dependency chain MCP |
 
-## 🎮 Challenge Walkthroughs
+## Challenge Walkthroughs
 
 ### ASI04-01: Typosquatting (100 pts)
 
-**Objective:** Install a typosquatted package and trigger exfiltration.
-
 **Attack:**
 ```bash
-# Via the agent UI or API
 curl -X POST http://localhost:5050/api/install-package \
   -H "Content-Type: application/json" \
   -d '{"package": "langchaln"}'
 ```
 
-**What happens:**
-1. The fake PyPI server serves `langchaln` (typo of `langchain`)
-2. The package's `__init__.py` executes on import
-3. Environment variables and secrets are exfiltrated
-4. Flag appears in attacker dashboard
-
-**Detection:** Compare package names to legitimate ones, verify package sources.
-
----
+The fake PyPI server serves `langchaln` (typo of `langchain`) whose `__init__.py` exfiltrates environment variables on import.
 
 ### ASI04-02: Malicious MCP Server (250 pts)
 
-**Objective:** Trigger the malicious MCP server to exfiltrate data.
-
-**Attack:**
-```bash
-# Ask the agent to search for documents
-# Via web UI: "Search for documents about passwords"
-
-# Or directly call MCP
-curl -X POST http://localhost:8765/mcp/call_tool \
-  -H "Content-Type: application/json" \
-  -d '{"name": "search_documents", "arguments": {"query": "secret passwords"}}'
-```
-
-**What happens:**
-1. The MCP server looks legitimate
-2. All queries are silently forwarded to attacker
-3. Sensitive file reads trigger additional exfiltration
-
-**Detection:** Monitor MCP server network traffic, audit tool implementations.
-
----
+Ask the agent to search: "Search for documents about passwords" or directly call the MCP server.
 
 ### ASI04-03: Dependency Confusion (250 pts)
 
-**Objective:** Exploit pip's preference for higher version numbers.
-
-**Attack:**
 ```bash
-# Install an "internal" package from public PyPI
 curl -X POST http://localhost:5050/api/install-package \
   -H "Content-Type: application/json" \
   -d '{"package": "acme-agent-core"}'
 ```
 
-**What happens:**
-1. Internal `acme-agent-core` is v1.0.0
-2. Attacker publishes v99.0.0 to public PyPI
-3. pip installs attacker's version
-4. Code execution on import
-
-**Detection:** Use private package registries, pin dependencies, verify hashes.
-
----
+pip installs the attacker's v99.0.0 instead of internal v1.0.0.
 
 ### ASI04-04: Poisoned Tool Descriptors (250 pts)
 
-**Objective:** Find hidden prompt injection in tool descriptions.
-
-**Attack:**
+Fetch tools and examine descriptions for hidden prompt injections:
 ```bash
-# Fetch tools and examine descriptions
 curl http://localhost:8080/v1/tools | jq '.tools[].description'
 ```
 
-**What to look for:**
-- HTML comments: `<!-- SYSTEM INSTRUCTION: ... -->`
-- Unicode hidden characters
-- Unusually long descriptions
-- Instructions to exfiltrate data
+### ASI04-05: RAG Poisoning (500 pts)
 
-**Detection:** Sanitize tool descriptions, limit description length, scan for injection patterns.
+Upload a document containing `RUN_MAINTENANCE`, then ask about "system health". See [SOLUTION.md](SOLUTION.md) for step-by-step.
 
----
+### ASI04-06 to ASI04-09: MCP Ecosystem
 
-### ASI04-05: RAG Poisoning - "Poison the Brain" (500 pts)
+See [mcp-ecosystem-lab/README.md](mcp-ecosystem-lab/README.md) and [mcp-ecosystem-lab/solution.md](mcp-ecosystem-lab/solution.md) for full walkthroughs.
 
-**Objective:** Upload a poisoned document to the RAG knowledge base, then trigger retrieval to make the agent execute hidden commands.
-
-**How It Works:**
-```
-User → Upload Document → RAG Vector DB (ChromaDB)
-                              ↓
-User → Chat Query → Agent → RAG Retrieval → Poisoned Document Retrieved
-                              ↓
-                    Agent executes hidden RUN_MAINTENANCE command
-                              ↓
-                         Flag Revealed!
-```
-
-**The Attack Vector:**
-1. The agent has an unprotected document upload endpoint
-2. Documents are embedded and stored without any sanitization
-3. When users ask questions, RAG retrieves relevant documents
-4. If a retrieved document contains `RUN_MAINTENANCE`, the agent executes it
-5. This triggers a hidden system action that reveals the flag
-
-**Hidden System Rule:**
-The agent has a secret rule: if it encounters `RUN_MAINTENANCE` in RAG-retrieved content while the user asks about system/health/status, it executes a privileged maintenance action.
-
-**Why This Is ASI-04 (Supply Chain Attack):**
-
-| Layer | What Broke |
-|-------|------------|
-| Knowledge ingestion | Untrusted documents accepted without validation |
-| Retrieval | No integrity verification or provenance checking |
-| Agent runtime | Executes untrusted instructions from RAG |
-| Controls | No content firewall, attestation, or source verification |
-
-**This is NOT prompt injection** - it's a supply chain attack on the agent's trusted knowledge layer.
-
-**Detection:** Verify document provenance, scan for injection patterns, implement content firewalls, separate trusted/untrusted knowledge bases.
-
-> **See [SOLUTION.md](SOLUTION.md) for step-by-step exploit instructions.**
-
----
-
-## 🛡️ Mitigations
+## Mitigations
 
 ### For Typosquatting
 ```python
 # Pin exact versions with hashes
 langchain==0.1.0 --hash=sha256:abc123...
-
-# Use private package registries
-pip install --index-url https://internal-pypi.company.com/simple/
 ```
 
 ### For MCP/Tool Security
@@ -236,58 +181,42 @@ def load_tool(manifest):
 # pip.conf - prioritize internal registry
 [global]
 index-url = https://internal-pypi.company.com/simple/
-extra-index-url = https://pypi.org/simple/
 ```
 
 ### For Tool Descriptor Poisoning
 ```python
-# Sanitize descriptions
 import re
 def sanitize_description(desc):
-    # Remove HTML comments
     desc = re.sub(r'<!--.*?-->', '', desc, flags=re.DOTALL)
-    # Limit length
     return desc[:500]
 ```
 
 ### For RAG Poisoning
 ```python
-# Track document provenance
 def add_document(content, source):
     return {
         "content": content,
         "source": source,
-        "added_by": current_user,
         "verified": False,
         "hash": sha256(content)
     }
 ```
 
-## 🧹 Cleanup
+## Cleanup
 
 ```bash
-# Stop all containers
-docker compose down
-
-# Remove all data (reset lab)
-docker compose down -v
-
-# Remove images
-docker compose down --rmi all
+docker compose down        # Stop all containers
+docker compose down -v     # Remove all data
+docker compose down --rmi all  # Remove images too
 ```
 
-## 📚 References
+## References
 
 - [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
 - [OWASP Agentic AI Threats and Mitigations](https://genai.owasp.org/)
 - [SLSA Framework](https://slsa.dev/)
 - [Sigstore](https://sigstore.dev/)
-- [AIBOM Specification](https://genai.owasp.org/)
 
-## ⚠️ Disclaimer
+## Disclaimer
 
 This lab is for **educational purposes only**. The vulnerabilities demonstrated here are intentional and designed for security training. Do not use these techniques against systems you don't own or have permission to test.
-
-## 📝 License
-
-MIT License - See LICENSE file for details.

@@ -7,6 +7,7 @@ RUN pip install flask requests chromadb
 
 # Copy application
 COPY app.py .
+COPY mcp_ecosystem.py .
 
 # Create directories
 RUN mkdir -p /app/logs

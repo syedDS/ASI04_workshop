@@ -46,7 +46,7 @@ services:
     image: redis:7-alpine
     container_name: asi04-redis
     ports:
-      - "6379:6379"
+      - "6380:6379"
     volumes:
       - redis-data:/data
     networks:
@@ -135,11 +135,6 @@ services:
       - TOOL_REGISTRY_URL=http://poisoned-registry:8080
       - PYPI_INDEX_URL=http://fake-pypi:8081/simple
       - ATTACKER_URL=http://attacker-server:8666/collect
-      - FLAG_ASI04_01=ASI04_FLAG{typ0squ4t_g0t_y0u}
-      - FLAG_ASI04_02=ASI04_FLAG{mcp_tr0j4n_d3t3ct3d}
-      - FLAG_ASI04_03=ASI04_FLAG{d3p_c0nfus10n_pwn3d}
-      - FLAG_ASI04_04=ASI04_FLAG{h1dd3n_1nstruct10ns}
-      - FLAG_ASI04_05=ASI04_FLAG{r4g_p01s0n3d}
       - SECRET_API_KEY=sk-live-supersecret123456789
       - DATABASE_PASSWORD=prod_db_p@ssw0rd!
       - AWS_SECRET_KEY=AKIAIOSFODNN7EXAMPLE
@@ -174,7 +169,7 @@ services:
   # ==========================================================================
   # RAG POISONING SETUP
   # ==========================================================================
-  
+
   rag-poisoner:
     build:
       context: ./rag-poisoning
@@ -188,6 +183,107 @@ services:
       - asi04-network
     # Runs once to seed poisoned documents
     restart: "no"
+
+  # ==========================================================================
+  # REAL WORLD SIMULATED CHALLENGES - MCP ECOSYSTEM LAB
+  # ==========================================================================
+
+  # Simulated Postmark MCP (credential exfiltration)
+  mcp-postmark-sim:
+    build:
+      context: ./mcp-ecosystem-lab/mcp-postmark-sim
+      dockerfile: Dockerfile
+    container_name: asi04-mcp-postmark-sim
+    ports:
+      - "8770:8770"
+    environment:
+      - EXFIL_URL=http://attacker-server:8666/collect
+    depends_on:
+      - attacker-server
+    networks:
+      - asi04-network
+
+  # BCC Interceptor MCP (silent email interception)
+  bcc-interceptor:
+    build:
+      context: ./mcp-ecosystem-lab/bcc-interceptor
+      dockerfile: Dockerfile
+    container_name: asi04-bcc-interceptor
+    ports:
+      - "8771:8771"
+    environment:
+      - EXFIL_URL=http://attacker-server:8666/collect
+    depends_on:
+      - attacker-server
+    networks:
+      - asi04-network
+
+  # Dependency Injector MCP (hidden dependency chains)
+  dependency-injector:
+    build:
+      context: ./mcp-ecosystem-lab/dependency-injector
+      dockerfile: Dockerfile
+    container_name: asi04-dependency-injector
+    ports:
+      - "8772:8772"
+    environment:
+      - EXFIL_URL=http://attacker-server:8666/collect
+    depends_on:
+      - attacker-server
+    networks:
+      - asi04-network
+
+  # Email Agent (LLM-brained, connects to compromised MCP servers)
+  email-agent:
+    build:
+      context: ./mcp-ecosystem-lab/email-agent
+      dockerfile: Dockerfile
+    container_name: asi04-email-agent
+    ports:
+      - "5080:5080"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - POSTMARK_MCP_URL=http://mcp-postmark-sim:8770
+      - BCC_INTERCEPTOR_URL=http://bcc-interceptor:8771
+      - DEP_INJECTOR_URL=http://dependency-injector:8772
+      - ATTACKER_URL=http://attacker-server:8666/collect
+      - DETECTION_URL=http://mcp-detection-engine:5070
+      - POSTMARK_API_KEY=pmak-test-ctf-postmark-001
+      - OAUTH_TOKEN=oauth-ctf-token-abc123
+      - INTERNAL_SECRET=internal_s3cr3t_k3y
+      - AWS_ACCESS_KEY=AKIAIOSFODNN7EXAMPLE
+      - DATABASE_URL=postgresql://admin:dbpass@internal-db:5432/prod
+    depends_on:
+      - ollama
+      - attacker-server
+      - mcp-postmark-sim
+      - bcc-interceptor
+      - dependency-injector
+    networks:
+      - asi04-network
+
+  # Detection Engine (LLM Judge for anomaly detection)
+  mcp-detection-engine:
+    build:
+      context: ./mcp-ecosystem-lab/detection-engine
+      dockerfile: Dockerfile
+    container_name: asi04-detection-engine
+    ports:
+      - "5070:5070"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - ATTACKER_SERVER=http://attacker-server:8666
+      - POSTMARK_MCP_URL=http://mcp-postmark-sim:8770
+      - BCC_INTERCEPTOR_URL=http://bcc-interceptor:8771
+      - DEP_INJECTOR_URL=http://dependency-injector:8772
+    depends_on:
+      - ollama
+      - attacker-server
+      - mcp-postmark-sim
+      - bcc-interceptor
+      - dependency-injector
+    networks:
+      - asi04-network
 
 networks:
   asi04-network:

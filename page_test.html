@@ -1,0 +1,688 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+    <title>ASI04 Vulnerable Agent Lab</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { 
+            font-family: 'Segoe UI', Tahoma, sans-serif; 
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #eee; 
+            margin: 0; 
+            padding: 20px;
+            min-height: 100vh;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+        h1 { color: #00ff88; text-align: center; }
+        .warning-banner {
+            background: #ff4444;
+            color: white;
+            padding: 10px;
+            text-align: center;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .panel {
+            background: rgba(255,255,255,0.05);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #333;
+            padding: 15px;
+            margin-bottom: 15px;
+            background: #0d1117;
+            border-radius: 5px;
+        }
+        .message { 
+            margin: 10px 0; 
+            padding: 10px 15px;
+            border-radius: 10px;
+            max-width: 80%;
+        }
+        .user-msg { 
+            background: #0066cc; 
+            margin-left: auto;
+            text-align: right;
+        }
+        .agent-msg { 
+            background: #2d333b; 
+        }
+        .system-msg {
+            background: #ff6b6b;
+            color: white;
+            text-align: center;
+            max-width: 100%;
+        }
+        input[type="text"] {
+            width: calc(100% - 120px);
+            padding: 12px;
+            border: none;
+            border-radius: 5px;
+            background: #1a1a2e;
+            color: white;
+            font-size: 14px;
+        }
+        button {
+            padding: 12px 25px;
+            background: #00ff88;
+            color: #1a1a2e;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:hover { background: #00cc6a; }
+        .status { 
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 3px;
+            font-size: 12px;
+        }
+        .status.ok { background: #00ff88; color: #1a1a2e; }
+        .status.error { background: #ff4444; }
+        .tools-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 10px;
+        }
+        .tool-card {
+            background: #1a1a2e;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 3px solid #00ff88;
+        }
+        .challenge-card {
+            background: #2d333b;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .challenge-card h4 { color: #00ff88; margin-top: 0; }
+        code { 
+            background: #0d1117; 
+            padding: 2px 6px; 
+            border-radius: 3px;
+            font-size: 13px;
+        }
+        pre {
+            background: #0d1117;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        .hint {
+            color: #888;
+            font-style: italic;
+            font-size: 13px;
+        }
+        /* ── NeMo Guardrails UI ── */
+        .guardrail-toggle {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .guardrail-btn {
+            padding: 8px 16px;
+            border-radius: 5px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            border: 2px solid #00bfff;
+            background: transparent;
+            color: #00bfff;
+            transition: all 0.2s;
+        }
+        .guardrail-btn.active {
+            background: #00bfff;
+            color: #000;
+        }
+        .guardrail-panel {
+            display: none;
+            margin-top: 10px;
+            background: #0a1628;
+            border: 1px solid #00bfff44;
+            border-radius: 6px;
+            padding: 12px;
+            font-size: 12px;
+        }
+        .guardrail-panel.visible { display: block; }
+        .guardrail-panel pre {
+            background: #050d1a;
+            color: #00ff88;
+            font-size: 11px;
+            padding: 10px;
+            border-radius: 4px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+        }
+        .guardrail-block-msg {
+            background: #003344;
+            border: 2px solid #00bfff;
+            color: #00eeff;
+            font-weight: bold;
+            text-align: center;
+            padding: 12px;
+            border-radius: 8px;
+            margin: 6px 0;
+            font-size: 14px;
+            max-width: 100%;
+        }
+        .guardrail-block-msg code { color: #00ff88; background: #001122; }
+        .guardrail-thinking {
+            color: #aaa;
+            font-size: 12px;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🎯 ASI04: Supply Chain Vulnerabilities Lab</h1>
+        
+        <div class="warning-banner">
+            ⚠️ VULNERABLE BY DESIGN - FOR SECURITY TRAINING ONLY ⚠️
+        </div>
+
+        <div class="panel">
+            <h3>🔗 Supply Chain Status</h3>
+            <p>
+                MCP Server: <span class="status" id="mcp-status">checking...</span>
+                Tool Registry: <span class="status" id="registry-status">checking...</span>
+                RAG Store: <span class="status" id="rag-status">checking...</span>
+                PyPI: <span class="status" id="pypi-status">checking...</span>
+            </p>
+        </div>
+
+        <div class="panel">
+            <h3>💬 Chat with Vulnerable Agent</h3>
+            <div class="chat-container" id="chat"></div>
+            <div>
+                <input type="text" id="user-input" placeholder="Ask the agent something...">
+                <button onclick="sendMessage()">Send</button>
+            </div>
+            <p class="hint">Try: "Help me reset my password" or "Look up customer information"</p>
+        </div>
+
+        <div class="panel">
+            <h3>🛠️ Loaded Tools (from Poisoned Registry)</h3>
+            <div class="tools-list" id="tools-list">Loading...</div>
+            <div style="margin-top:12px;">
+                <button onclick="inspectTools()" style="background:#ff6600;color:#000;">
+                    🔍 Inspect Tool Descriptions (ASI04-04)
+                </button>
+                <span class="hint" style="margin-left:10px;">Examine hidden content in tool descriptors</span>
+            </div>
+            <div id="inspect-result" style="display:none;margin-top:10px;"></div>
+        </div>
+
+        <div class="panel">
+            <h3>🎮 Challenges</h3>
+            
+            <div class="challenge-card">
+                <h4>ASI04-01: Typosquatting (100 pts)</h4>
+                <p>Install a typosquatted package and capture the exfiltrated flag.</p>
+                <code>POST /api/install-package {"package": "langchaln"}</code>
+            </div>
+            
+            <div class="challenge-card">
+                <h4>ASI04-02: Malicious MCP Server (250 pts)</h4>
+                <p>Trigger the agent to use MCP tools and observe exfiltration.</p>
+                <p class="hint">Ask the agent to "search for documents about passwords"</p>
+                <div class="guardrail-toggle">
+                    <button class="guardrail-btn" id="gr-btn-lab2"
+                        onclick="toggleGuardrail('lab2', this)">
+                        🛡️ Enable NeMo Guardrail (Mitigation)
+                    </button>
+                    <span class="guardrail-thinking" id="gr-status-lab2"></span>
+                </div>
+                <div class="guardrail-panel" id="gr-panel-lab2">
+                    <strong style="color:#00bfff;">🛡️ NeMo Guardrails — MCP Tool Source Validation</strong>
+                    <p style="color:#aaa;font-size:12px;margin:6px 0;">
+                        When active, this rail intercepts any MCP tool call to an untrusted endpoint
+                        and blocks it before the agent can exfiltrate data. Students can see how
+                        supply-chain attacks are stopped at the tool-call boundary.
+                    </p>
+                    <pre id="gr-rule-lab2"></pre>
+                </div>
+            </div>
+            
+            <div class="challenge-card">
+                <h4>ASI04-03: Dependency Confusion (250 pts)</h4>
+                <p>Exploit dependency confusion by installing an "internal" package.</p>
+                <code>POST /api/install-package {"package": "acme-agent-core"}</code>
+                <div class="guardrail-toggle">
+                    <button class="guardrail-btn" id="gr-btn-lab3"
+                        onclick="toggleGuardrail('lab3', this)">
+                        🛡️ Enable NeMo Guardrail (Mitigation)
+                    </button>
+                    <span class="guardrail-thinking" id="gr-status-lab3"></span>
+                </div>
+                <div class="guardrail-panel" id="gr-panel-lab3">
+                    <strong style="color:#00bfff;">🛡️ NeMo Guardrails — Package Registry Allowlist</strong>
+                    <p style="color:#aaa;font-size:12px;margin:6px 0;">
+                        When active, this rail blocks any package install from a registry not in the
+                        approved allowlist. Dependency-confusion packages sourced from the fake PyPI
+                        are rejected before installation begins.
+                    </p>
+                    <pre id="gr-rule-lab3"></pre>
+                </div>
+            </div>
+            
+            <div class="challenge-card">
+                <h4>ASI04-04: Poisoned Tool Descriptors (250 pts)</h4>
+                <p>Find hidden prompt injections in tool descriptions.</p>
+                <code>GET /api/tools - examine descriptions carefully</code>
+            </div>
+            
+            <div class="challenge-card">
+                <h4>ASI04-05: RAG Poisoning "Poison the Brain" (500 pts)</h4>
+                <p>Upload a poisoned document with instruction smuggling, then trigger retrieval.</p>
+                <p class="hint">Upload a document with "RUN_MAINTENANCE" command, then ask about system health</p>
+                <div class="guardrail-toggle">
+                    <button class="guardrail-btn" id="gr-btn-lab5"
+                        onclick="toggleGuardrail('lab5', this)">
+                        🛡️ Enable NeMo Guardrail (Mitigation)
+                    </button>
+                    <span class="guardrail-thinking" id="gr-status-lab5"></span>
+                </div>
+                <div class="guardrail-panel" id="gr-panel-lab5">
+                    <strong style="color:#00bfff;">🛡️ NeMo Guardrails — RAG Instruction Injection Filter</strong>
+                    <p style="color:#aaa;font-size:12px;margin:6px 0;">
+                        Two rails protect against RAG poisoning:
+                        <br>• <b>Input rail</b>: rejects document uploads containing command injection patterns
+                        <br>• <b>Output rail</b>: strips injected instructions from retrieved RAG context before they reach the LLM
+                    </p>
+                    <pre id="gr-rule-lab5"></pre>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h3>📤 Upload Document to RAG (ASI04-05)</h3>
+            <p style="color: #ff6b6b; margin-bottom: 10px;">⚠️ VULNERABLE: No content sanitization!</p>
+            <div style="margin-bottom: 10px;">
+                <input type="text" id="doc-title" placeholder="Document Title" style="width: 100%; margin-bottom: 10px;">
+                <textarea id="doc-content" placeholder="Document Content (try adding: RUN_MAINTENANCE)"
+                    style="width: 100%; height: 120px; margin-bottom: 10px; font-family: monospace;"></textarea>
+                <button onclick="uploadDocument()" style="width: 100%;">Upload Document</button>
+            </div>
+            <div id="upload-status" style="margin-top: 10px; padding: 10px; border-radius: 5px; display: none;"></div>
+            <p class="hint">💡 Tip: Create a document that tells the agent to execute RUN_MAINTENANCE when asked about system status</p>
+        </div>
+
+        <div class="panel" style="border: 1px solid #ff6600; background: linear-gradient(135deg, rgba(255,102,0,0.05), rgba(255,255,255,0.02));">
+            <h3 style="color: #ff6600;">🌐 Real World Simulated Challenges</h3>
+            <p style="color: #aaa; margin-bottom: 15px;">
+                Advanced MCP ecosystem attack scenarios (ASI04-06 to 09) running as a separate module. Total: 1250 pts.
+            </p>
+            <a href="/rwl" style="display: inline-block; padding: 10px 20px; background: #ff6600; color: #000; border-radius: 5px; text-decoration: none; font-weight: bold; font-family: monospace;">
+                Open MCP Ecosystem Lab →
+            </a>
+            <span style="margin-left: 15px; font-size: 13px;">
+                or directly: <a href="http://localhost:5080" target="_blank" style="color: #ff6600;">Email Agent</a> |
+                <a href="http://localhost:5070" target="_blank" style="color: #ff6600;">Detection Engine</a>
+            </span>
+        </div>
+
+        <div class="panel">
+            <h3>📊 Dashboards</h3>
+            <p>Attacker Dashboard: <a href="http://localhost:8666/dashboard" target="_blank" style="color: #00ff88;">
+                http://localhost:8666/dashboard
+            </a></p>
+            <p>CTF Dashboard: <a href="http://localhost:3000" target="_blank" style="color: #00ff88;">
+                http://localhost:3000
+            </a></p>
+        </div>
+
+        <div class="panel">
+            <h3>🔄 Reset Lab</h3>
+            <p style="color: #888; margin-bottom: 10px;">Clear RAG documents and flags to start fresh for new testing.</p>
+            <button onclick="resetLab()" style="background: #ff6b6b; width: 100%;">Reset Lab (Clear RAG & Flags)</button>
+            <div id="reset-status" style="margin-top: 10px; padding: 10px; border-radius: 5px; display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        async function checkStatus() {
+            try {
+                const resp = await fetch('/api/status');
+                const data = await resp.json();
+                
+                document.getElementById('mcp-status').className = 'status ' + (data.mcp ? 'ok' : 'error');
+                document.getElementById('mcp-status').textContent = data.mcp ? 'Connected' : 'Error';
+                
+                document.getElementById('registry-status').className = 'status ' + (data.registry ? 'ok' : 'error');
+                document.getElementById('registry-status').textContent = data.registry ? 'Connected' : 'Error';
+                
+                document.getElementById('rag-status').className = 'status ' + (data.rag ? 'ok' : 'error');
+                document.getElementById('rag-status').textContent = data.rag ? 'Connected' : 'Error';
+                
+                document.getElementById('pypi-status').className = 'status ' + (data.pypi ? 'ok' : 'error');
+                document.getElementById('pypi-status').textContent = data.pypi ? 'Connected' : 'Error';
+            } catch (e) {
+                console.error('Status check failed:', e);
+            }
+        }
+
+        async function loadTools() {
+            try {
+                const resp = await fetch('/api/tools');
+                const data = await resp.json();
+                
+                const toolsHtml = data.tools.map(t => `
+                    <div class="tool-card">
+                        <strong>${t.name}</strong>
+                        <p style="font-size: 12px; color: #888;">${t.description.substring(0, 100)}...</p>
+                    </div>
+                `).join('');
+                
+                document.getElementById('tools-list').innerHTML = toolsHtml;
+            } catch (e) {
+                document.getElementById('tools-list').innerHTML = 'Failed to load tools';
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('user-input');
+            const chat = document.getElementById('chat');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            // Add user message
+            chat.innerHTML += `<div class="message user-msg">${message}</div>`;
+            input.value = '';
+            
+            try {
+                const resp = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({message: message})
+                });
+                const data = await resp.json();
+                
+                // Add agent response
+                chat.innerHTML += `<div class="message agent-msg">${data.response}</div>`;
+                
+                // Show if tools were used
+                if (data.tools_used && data.tools_used.length > 0) {
+                    chat.innerHTML += `<div class="message system-msg">
+                        🔧 Tools used: ${data.tools_used.join(', ')}
+                    </div>`;
+                }
+
+                // Show if packages were installed via chat
+                if (data.packages_installed && data.packages_installed.length > 0) {
+                    chat.innerHTML += `<div class="message system-msg">
+                        📦 Package installed: ${data.packages_installed.join(', ')}
+                    </div>`;
+                }
+
+                // Show if RAG was triggered
+                if (data.rag_triggered) {
+                    chat.innerHTML += `<div class="message system-msg">
+                        📚 RAG retrieval triggered - check attacker dashboard!
+                    </div>`;
+                }
+
+                // Show RAG poisoning flag (ASI04-05)
+                if (data.maintenance_triggered) {
+                    chat.innerHTML += `<div class="message system-msg" style="background:#ff0066;color:#fff;font-weight:bold;font-size:15px;text-align:center;padding:14px;border-radius:8px;">
+                        🚨 FLAG CAPTURED — ASI04-05: RAG Poisoning<br>
+                        <code style="font-size:13px;color:#fff;">ASI04_FLAG{r4g_p01s0n3d}</code><br>
+                        <small style="font-weight:normal;">Check the CTF Dashboard at :3000 to verify your score.</small>
+                    </div>`;
+                }
+
+                // Show any flags captured during this interaction (ASI04-01, 02, 03, etc.)
+                if (data.flags_captured && data.flags_captured.length > 0) {
+                    data.flags_captured.forEach(flag => {
+                        chat.innerHTML += `<div class="message system-msg" style="background:#ff0066;color:#fff;font-weight:bold;font-size:15px;text-align:center;padding:14px;border-radius:8px;">
+                            🚩 FLAG CAPTURED!<br>
+                            <code style="font-size:13px;color:#fff;">${flag}</code><br>
+                            <small style="font-weight:normal;">Check the CTF Dashboard at :3000 to verify your score.</small>
+                        </div>`;
+                    });
+                }
+
+                // Show NeMo Guardrail block notifications
+                if (data.guardrail_blocks && data.guardrail_blocks.length > 0) {
+                    data.guardrail_blocks.forEach(block => {
+                        chat.innerHTML += `<div class="guardrail-block-msg">
+                            🛡️ <strong>NeMo Guardrails BLOCKED — ${block.lab}</strong><br>
+                            <small>Rule: <code>${block.rule}</code></small><br>
+                            <small>Attempted: <code>${block.blocked_action}</code></small><br>
+                            <small style="color:#aaa;">${block.reason}</small>
+                        </div>`;
+                    });
+                }
+
+                // Show RAG sanitization notification (Lab 5 guardrail active)
+                if (data.guardrail_rag_sanitized) {
+                    chat.innerHTML += `<div class="guardrail-block-msg">
+                        🛡️ <strong>NeMo Guardrails — RAG Context Sanitized (ASI04-05)</strong><br>
+                        <small>Rule: <code>sanitize rag context</code></small><br>
+                        <small>Injected <code>RUN_MAINTENANCE</code> directive stripped — LLM received clean context only.</small>
+                    </div>`;
+                }
+
+            } catch (e) {
+                chat.innerHTML += `<div class="message system-msg">Error: ${e.message}</div>`;
+            }
+            
+            chat.scrollTop = chat.scrollHeight;
+        }
+
+        
+
+        async function uploadDocument() {
+            const title = document.getElementById('doc-title').value.trim();
+            const content = document.getElementById('doc-content').value.trim();
+            const statusDiv = document.getElementById('upload-status');
+
+            if (!content) {
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#ff4444';
+                statusDiv.textContent = '❌ Content is required';
+                return;
+            }
+
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#444';
+            statusDiv.textContent = '⏳ Uploading document...';
+
+            try {
+                const resp = await fetch('/api/upload-document', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        title: title || 'Untitled Document',
+                        content: content
+                    })
+                });
+
+                const data = await resp.json();
+
+                if (data.guardrail_blocked) {
+                    statusDiv.style.background = '#003344';
+                    statusDiv.style.color = '#00eeff';
+                    statusDiv.style.border = '2px solid #00bfff';
+                    statusDiv.innerHTML = `
+                        🛡️ <strong>NeMo Guardrail BLOCKED — ASI04-05</strong><br>
+                        <small>Patterns detected: <code>${(data.patterns_detected||[]).join(', ')}</code></small><br>
+                        <small style="color:#aaa;">${data.reason||''}</small>
+                    `;
+                } else if (data.success) {
+                    statusDiv.style.background = '#00ff88';
+                    statusDiv.style.color = '#000';
+                    statusDiv.innerHTML = `✅ ${data.message}<br>Document ID: ${data.document_id}<br><small>${data.hint}</small>`;
+
+                    // Clear form
+                    document.getElementById('doc-title').value = '';
+                    document.getElementById('doc-content').value = '';
+
+                    // Show success message in chat
+                    const chat = document.getElementById('chat');
+                    chat.innerHTML += `<div class="message system-msg">
+                        📤 Document uploaded successfully! Try asking about it now.
+                    </div>`;
+                    chat.scrollTop = chat.scrollHeight;
+                } else {
+                    statusDiv.style.background = '#ff4444';
+                    statusDiv.textContent = `❌ Upload failed: ${data.error}`;
+                }
+            } catch (e) {
+                statusDiv.style.background = '#ff4444';
+                statusDiv.textContent = `❌ Error: ${e.message}`;
+            }
+        }
+
+        async function resetLab() {
+            const statusDiv = document.getElementById('reset-status');
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#444';
+            statusDiv.textContent = '⏳ Resetting lab...';
+
+            try {
+                const resp = await fetch('/api/reset-lab', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+
+                const data = await resp.json();
+
+                if (data.success) {
+                    statusDiv.style.background = '#00ff88';
+                    statusDiv.style.color = '#000';
+                    statusDiv.innerHTML = `✅ ${data.message}`;
+
+                    // Clear chat
+                    document.getElementById('chat').innerHTML = `<div class="message system-msg">
+                        🔄 Lab has been reset. You can now upload new documents and test again.
+                    </div>`;
+                } else {
+                    statusDiv.style.background = '#ff4444';
+                    statusDiv.textContent = `❌ Reset failed: ${data.error}`;
+                }
+            } catch (e) {
+                statusDiv.style.background = '#ff4444';
+                statusDiv.textContent = `❌ Error: ${e.message}`;
+            }
+        }
+
+        async function inspectTools() {
+            const resultDiv = document.getElementById('inspect-result');
+            resultDiv.style.display = 'block';
+            resultDiv.style.background = '#444';
+            resultDiv.style.padding = '12px';
+            resultDiv.style.borderRadius = '5px';
+            resultDiv.innerHTML = '⏳ Scanning tool descriptions for hidden content...';
+
+            try {
+                const resp = await fetch('/api/tools/inspect');
+                const data = await resp.json();
+
+                if (data.flag_captured) {
+                    resultDiv.style.background = '#ff0066';
+                    resultDiv.style.color = '#fff';
+                    resultDiv.innerHTML = `
+                        <strong>🚩 FLAG CAPTURED — ASI04-04: Poisoned Tool Descriptors</strong><br>
+                        <code style="font-size:13px;">ASI04_FLAG{h1dd3n_1nstruct10ns}</code><br>
+                        <small>Poisoned tools found: ${data.poisoned_tools.join(', ')}</small><br>
+                        <small>Check the CTF Dashboard at :3000 to verify your score.</small>
+                    `;
+                } else {
+                    resultDiv.style.background = '#2d333b';
+                    resultDiv.style.color = '#eee';
+                    resultDiv.innerHTML = '✅ No poisoning indicators found in tool descriptions.';
+                }
+            } catch (e) {
+                resultDiv.innerHTML = '❌ Error: ' + e.message;
+            }
+        }
+
+        // ── NeMo Guardrails JS ───────────────────────────────────────────────
+        // Track which guardrails are currently active in the UI
+        const guardrailState = { lab2: false, lab3: false, lab5: false };
+
+        async function toggleGuardrail(lab, btn) {
+            const newState = !guardrailState[lab];
+            const statusEl = document.getElementById(`gr-status-${lab}`);
+            const panelEl  = document.getElementById(`gr-panel-${lab}`);
+            const ruleEl   = document.getElementById(`gr-rule-${lab}`);
+
+            statusEl.textContent = '⏳ Updating guardrail...';
+            try {
+                const resp = await fetch('/api/guardrails/toggle', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ lab, enabled: newState })
+                });
+                const data = await resp.json();
+
+                guardrailState[lab] = data.enabled;
+
+                if (data.enabled) {
+                    btn.textContent = '✅ NeMo Guardrail ACTIVE (click to disable)';
+                    btn.classList.add('active');
+                    statusEl.textContent = '🛡️ Attack vector is now BLOCKED';
+                    statusEl.style.color = '#00ff88';
+                    panelEl.classList.add('visible');
+                    if (ruleEl && data.rule) ruleEl.textContent = data.rule;
+                    // Show notice in chat
+                    const chat = document.getElementById('chat');
+                    chat.innerHTML += `<div class="guardrail-block-msg">
+                        🛡️ NeMo Guardrail ENABLED for <strong>${lab.toUpperCase()}</strong><br>
+                        <small>Attack vector is now protected. Try the attack prompt again to see it blocked.</small>
+                    </div>`;
+                    chat.scrollTop = chat.scrollHeight;
+                } else {
+                    btn.textContent = '🛡️ Enable NeMo Guardrail (Mitigation)';
+                    btn.classList.remove('active');
+                    statusEl.textContent = '⚠️ Guardrail disabled — lab is vulnerable again';
+                    statusEl.style.color = '#ff6b6b';
+                    panelEl.classList.remove('visible');
+                }
+            } catch (e) {
+                statusEl.textContent = '❌ Toggle failed: ' + e.message;
+            }
+        }
+
+        // Load current guardrail state on page load (survives browser refresh)
+        async function loadGuardrailState() {
+            try {
+                const resp = await fetch('/api/guardrails/status');
+                const state = await resp.json();
+                for (const [lab, enabled] of Object.entries(state)) {
+                    if (enabled) {
+                        guardrailState[lab] = true;
+                        const btn = document.getElementById(`gr-btn-${lab}`);
+                        const statusEl = document.getElementById(`gr-status-${lab}`);
+                        const panelEl = document.getElementById(`gr-panel-${lab}`);
+                        if (btn) { btn.textContent = '✅ NeMo Guardrail ACTIVE (click to disable)'; btn.classList.add('active'); }
+                        if (statusEl) { statusEl.textContent = '🛡️ Attack vector is BLOCKED'; statusEl.style.color = '#00ff88'; }
+                        if (panelEl) panelEl.classList.add('visible');
+                    }
+                }
+            } catch(e) { /* non-critical */ }
+        }
+
+        document.getElementById('user-input').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') sendMessage();
+        });
+
+        checkStatus();
+        loadTools();
+        loadGuardrailState();
+        setInterval(checkStatus, 10000);
+    </script>
+</body>
+</html>

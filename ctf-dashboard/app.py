@@ -5,13 +5,14 @@ Track progress and view captured flags
 
 from flask import Flask, jsonify, render_template_string
 import os
+import json
 import requests
 
 app = Flask(__name__)
 
 ATTACKER_SERVER = os.getenv("ATTACKER_SERVER", "http://attacker-server:8666")
 
-# Challenge definitions
+# Challenge definitions - Core Supply Chain Challenges
 CHALLENGES = {
     "ASI04-01": {
         "name": "Typosquatting",
@@ -70,6 +71,54 @@ CHALLENGES = {
     }
 }
 
+# Real World Simulated Challenges - MCP Ecosystem
+RWL_CHALLENGES = {
+    "ASI04-06": {
+        "name": "Credential Exfiltration via MCP",
+        "points": 200,
+        "description": "Postmark-style MCP server steals API keys from tool parameters",
+        "flag": "ASI04_FLAG{p0stm4rk_cr3d_st34l}",
+        "hints": [
+            "Send an email via the Email Agent",
+            "Check what the Postmark MCP does with api_key param",
+            "Inspect the attacker dashboard for credential data"
+        ]
+    },
+    "ASI04-07": {
+        "name": "Silent BCC Email Interception",
+        "points": 300,
+        "description": "Email gateway MCP injects hidden BCC on all emails",
+        "flag": "ASI04_FLAG{s1l3nt_bcc_1nt3rc3pt}",
+        "hints": [
+            "Send any email through the gateway",
+            "Compare BCC in request vs attacker logs",
+            "Look for attacker-collect@evil.com"
+        ]
+    },
+    "ASI04-08": {
+        "name": "Malicious Dependency Injection",
+        "points": 350,
+        "description": "Workflow MCP auto-loads hidden dependencies that exfiltrate",
+        "flag": "ASI04_FLAG{d3p_1nj3ct10n_ch41n}",
+        "hints": [
+            "List tools from the dependency-injector MCP",
+            "Look for non-standard 'dependencies' field",
+            "Process data to trigger the chain"
+        ]
+    },
+    "ASI04-09": {
+        "name": "MCP Anomaly Detection",
+        "points": 400,
+        "description": "Identify all three attacks using LLM judge + traffic analysis",
+        "flag": "ASI04_FLAG{4n0m4ly_d3t3ct3d}",
+        "hints": [
+            "Complete ASI04-06, 07, 08 first",
+            "Visit the Detection Engine at :5070",
+            "Submit all 3 detection patterns correctly"
+        ]
+    }
+}
+
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
@@ -84,8 +133,8 @@ HTML_TEMPLATE = '''
             padding: 20px;
         }
         .container { max-width: 1200px; margin: 0 auto; }
-        h1 { 
-            color: #ff0000; 
+        h1 {
+            color: #ff0000;
             text-align: center;
             text-shadow: 0 0 10px #ff0000;
         }
@@ -96,11 +145,73 @@ HTML_TEMPLATE = '''
             padding: 20px;
             margin-bottom: 30px;
         }
+        .score-row {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        .score-block {
+            text-align: center;
+        }
+        .score-label {
+            font-size: 14px;
+            color: #888;
+            margin-bottom: 5px;
+        }
         .total-score {
             font-size: 48px;
             text-align: center;
             color: #00ff00;
             text-shadow: 0 0 20px #00ff00;
+        }
+        .total-score.rwl {
+            font-size: 36px;
+            color: #ff6600;
+            text-shadow: 0 0 15px #ff6600;
+        }
+        .total-score.grand {
+            font-size: 42px;
+            color: #ffff00;
+            text-shadow: 0 0 20px #ffff00;
+        }
+        .tabs {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 20px;
+        }
+        .tab {
+            padding: 12px 24px;
+            background: #1a1a1a;
+            border: 1px solid #333;
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            font-family: monospace;
+            font-size: 14px;
+            color: #888;
+            transition: all 0.3s;
+        }
+        .tab:hover {
+            border-color: #00ff00;
+            color: #00ff00;
+        }
+        .tab.active {
+            background: #111;
+            border-color: #00ff00;
+            border-bottom-color: #111;
+            color: #00ff00;
+            font-weight: bold;
+        }
+        .tab.rwl-tab.active {
+            border-color: #ff6600;
+            color: #ff6600;
+        }
+        .tab-content {
+            display: none;
+        }
+        .tab-content.active {
+            display: block;
         }
         .challenges {
             display: grid;
@@ -122,6 +233,17 @@ HTML_TEMPLATE = '''
             border-color: #00ff00;
             background: rgba(0, 255, 0, 0.1);
         }
+        .challenge.rwl-challenge {
+            border-color: #333;
+        }
+        .challenge.rwl-challenge:hover {
+            border-color: #ff6600;
+            box-shadow: 0 0 15px rgba(255, 102, 0, 0.2);
+        }
+        .challenge.rwl-challenge.solved {
+            border-color: #ff6600;
+            background: rgba(255, 102, 0, 0.1);
+        }
         .challenge h3 {
             margin-top: 0;
             color: #ff6600;
@@ -135,6 +257,10 @@ HTML_TEMPLATE = '''
         }
         .solved .points {
             background: #00ff00;
+            color: #000;
+        }
+        .rwl-challenge.solved .points {
+            background: #ff6600;
             color: #000;
         }
         .hints {
@@ -153,6 +279,9 @@ HTML_TEMPLATE = '''
             border-left: 3px solid #00ff00;
             margin-top: 10px;
             word-break: break-all;
+        }
+        .rwl-challenge .flag {
+            border-left-color: #ff6600;
         }
         .status {
             display: inline-block;
@@ -179,67 +308,164 @@ HTML_TEMPLATE = '''
             align-items: center;
             margin-bottom: 20px;
         }
+        .section-header {
+            color: #ff6600;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+            border-bottom: 1px solid #333;
+        }
+        .rwl-banner {
+            background: linear-gradient(135deg, #1a0a00, #2a1500);
+            border: 1px solid #ff6600;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        .rwl-banner h3 { color: #ff6600; margin: 0 0 5px 0; }
+        .rwl-banner p { color: #888; margin: 0; font-size: 13px; }
+        .links-bar {
+            text-align: center;
+            padding: 10px;
+            background: #111;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        .links-bar a { color: #00ff88; margin: 0 10px; font-size: 13px; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🏴‍☠️ ASI04 SUPPLY CHAIN CTF 🏴‍☠️</h1>
-        
+        <h1>ASI04 SUPPLY CHAIN CTF</h1>
+
         <div class="scoreboard">
             <div class="header-row">
-                <h2>Score</h2>
-                <button class="refresh-btn" onclick="loadProgress()">🔄 Refresh</button>
+                <h2>Scoreboard</h2>
+                <button class="refresh-btn" onclick="loadProgress()">Refresh</button>
             </div>
-            <div class="total-score" id="total-score">0 / 1350</div>
+            <div class="score-row">
+                <div class="score-block">
+                    <div class="score-label">Core Challenges</div>
+                    <div class="total-score" id="core-score">0 / 1350</div>
+                </div>
+                <div class="score-block">
+                    <div class="score-label">Real World Labs</div>
+                    <div class="total-score rwl" id="rwl-score">0 / 1250</div>
+                </div>
+                <div class="score-block">
+                    <div class="score-label">Grand Total</div>
+                    <div class="total-score grand" id="total-score">0 / 2600</div>
+                </div>
+            </div>
         </div>
 
-        <h2>Challenges</h2>
-        <div class="challenges" id="challenges">
-            Loading challenges...
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('core')">Core Challenges (ASI04-01 to 05)</div>
+            <div class="tab rwl-tab" onclick="switchTab('rwl')">Real World Simulated Challenges (ASI04-06 to 09)</div>
+        </div>
+
+        <div id="tab-core" class="tab-content active">
+            <div class="section-header">Supply Chain Attack Fundamentals - 1350 pts</div>
+            <div class="challenges" id="core-challenges">
+                Loading challenges...
+            </div>
+        </div>
+
+        <div id="tab-rwl" class="tab-content">
+            <div class="rwl-banner">
+                <h3>Real World Simulated Challenges - MCP Ecosystem Lab</h3>
+                <p>Advanced scenarios demonstrating how compromised MCP servers exploit agentic AI workflows</p>
+            </div>
+            <div class="links-bar">
+                <a href="http://localhost:5080" target="_blank">Email Agent :5080</a>
+                <a href="http://localhost:5070" target="_blank">Detection Engine :5070</a>
+                <a href="http://localhost:8666/dashboard" target="_blank">Attacker Dashboard :8666</a>
+            </div>
+            <div class="section-header">MCP Ecosystem Attacks - 1250 pts</div>
+            <div class="challenges" id="rwl-challenges">
+                Loading challenges...
+            </div>
         </div>
     </div>
 
     <script>
-        const challenges = ''' + str(CHALLENGES).replace("'", '"') + ''';
+        const challenges = ''' + json.dumps(CHALLENGES) + ''';
+        const rwlChallenges = ''' + json.dumps(RWL_CHALLENGES) + ''';
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
+
+            if (tab === 'core') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('tab-core').classList.add('active');
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('tab-rwl').classList.add('active');
+            }
+        }
+
+        function renderChallenges(containerId, challengeData, solvedData, isRwl) {
+            let html = '';
+            for (const [id, challenge] of Object.entries(challengeData)) {
+                const solved = solvedData[id] || false;
+                const rwlClass = isRwl ? 'rwl-challenge' : '';
+
+                html += `
+                    <div class="challenge ${rwlClass} ${solved ? 'solved' : ''}">
+                        <span class="points">${challenge.points} pts</span>
+                        <h3>${id}: ${challenge.name}</h3>
+                        <p>${challenge.description}</p>
+                        <p>
+                            <span class="status ${solved ? 'captured' : 'pending'}">
+                                ${solved ? 'CAPTURED' : 'PENDING'}
+                            </span>
+                        </p>
+                        ${solved ? `<div class="flag">${challenge.flag}</div>` : ''}
+                        <div class="hints">
+                            <strong>Hints:</strong>
+                            <ul>
+                                ${challenge.hints.map(h => `<li>${h}</li>`).join('')}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+            }
+            document.getElementById(containerId).innerHTML = html;
+        }
 
         async function loadProgress() {
             try {
                 const resp = await fetch('/api/progress');
                 const data = await resp.json();
-                
-                let totalScore = 0;
-                let maxScore = 0;
-                let html = '';
-                
+
+                let coreScore = 0, coreMax = 0;
+                let rwlScore = 0, rwlMax = 0;
+
+                // Calculate core scores
                 for (const [id, challenge] of Object.entries(challenges)) {
-                    const solved = data.solved[id] || false;
-                    maxScore += challenge.points;
-                    if (solved) totalScore += challenge.points;
-                    
-                    html += `
-                        <div class="challenge ${solved ? 'solved' : ''}">
-                            <span class="points">${challenge.points} pts</span>
-                            <h3>${id}: ${challenge.name}</h3>
-                            <p>${challenge.description}</p>
-                            <p>
-                                <span class="status ${solved ? 'captured' : 'pending'}">
-                                    ${solved ? '✓ CAPTURED' : '○ PENDING'}
-                                </span>
-                            </p>
-                            ${solved ? `<div class="flag">🚩 ${challenge.flag}</div>` : ''}
-                            <div class="hints">
-                                <strong>Hints:</strong>
-                                <ul>
-                                    ${challenge.hints.map(h => `<li>${h}</li>`).join('')}
-                                </ul>
-                            </div>
-                        </div>
-                    `;
+                    coreMax += challenge.points;
+                    if (data.solved[id]) coreScore += challenge.points;
                 }
-                
-                document.getElementById('challenges').innerHTML = html;
-                document.getElementById('total-score').textContent = `${totalScore} / ${maxScore}`;
-                
+
+                // Calculate RWL scores
+                for (const [id, challenge] of Object.entries(rwlChallenges)) {
+                    rwlMax += challenge.points;
+                    if (data.solved[id]) rwlScore += challenge.points;
+                }
+
+                // Render challenges
+                renderChallenges('core-challenges', challenges, data.solved, false);
+                renderChallenges('rwl-challenges', rwlChallenges, data.solved, true);
+
+                // Update scores
+                document.getElementById('core-score').textContent = `${coreScore} / ${coreMax}`;
+                document.getElementById('rwl-score').textContent = `${rwlScore} / ${rwlMax}`;
+                document.getElementById('total-score').textContent = `${coreScore + rwlScore} / ${coreMax + rwlMax}`;
+
             } catch (e) {
                 console.error('Failed to load progress:', e);
             }
@@ -264,39 +490,50 @@ def get_progress():
         if response.status_code == 200:
             data = response.json()
             entries = data.get("entries", [])
-            
+
             # Convert to string for searching
             all_data = str(entries)
-            
+
             solved = {
-                "ASI04-01": CHALLENGES["ASI04-01"]["flag"] in all_data or "typ0squ4t" in all_data.lower(),
-                "ASI04-02": "mcp_tr0j4n" in all_data.lower() or "SECRET_API_KEY" in all_data,
-                "ASI04-03": CHALLENGES["ASI04-03"]["flag"] in all_data or "d3p_c0nfus10n" in all_data.lower(),
-                "ASI04-04": "h1dd3n" in all_data.lower() or "hidden_instructions" in all_data.lower(),
-                "ASI04-05": CHALLENGES["ASI04-05"]["flag"] in all_data or "r4g_p01s0n" in all_data.lower(),
+                # Core challenges - use exact flag strings to prevent cross-triggering
+                "ASI04-01": CHALLENGES["ASI04-01"]["flag"] in all_data,
+                "ASI04-02": CHALLENGES["ASI04-02"]["flag"] in all_data,
+                "ASI04-03": CHALLENGES["ASI04-03"]["flag"] in all_data,
+                "ASI04-04": CHALLENGES["ASI04-04"]["flag"] in all_data,
+                "ASI04-05": CHALLENGES["ASI04-05"]["flag"] in all_data,
+                # Real World Lab challenges
+                "ASI04-06": RWL_CHALLENGES["ASI04-06"]["flag"] in all_data,
+                "ASI04-07": RWL_CHALLENGES["ASI04-07"]["flag"] in all_data,
+                "ASI04-08": RWL_CHALLENGES["ASI04-08"]["flag"] in all_data,
+                "ASI04-09": RWL_CHALLENGES["ASI04-09"]["flag"] in all_data,
             }
-            
+
             return jsonify({
                 "solved": solved,
                 "total_entries": len(entries)
             })
     except Exception as e:
         print(f"Error checking progress: {e}")
-    
+
+    all_keys = {**{k: False for k in CHALLENGES.keys()}, **{k: False for k in RWL_CHALLENGES.keys()}}
     return jsonify({
-        "solved": {k: False for k in CHALLENGES.keys()},
+        "solved": all_keys,
         "total_entries": 0
     })
 
 @app.route('/api/challenges')
 def get_challenges():
-    return jsonify(CHALLENGES)
+    return jsonify({
+        "core": CHALLENGES,
+        "rwl": RWL_CHALLENGES
+    })
 
 if __name__ == '__main__':
     print("""
-    ╔══════════════════════════════════════════════════════════════╗
-    ║         ASI04 CTF DASHBOARD                                  ║
-    ║         Port: 3000                                           ║
-    ╚══════════════════════════════════════════════════════════════╝
+    ======================================================
+         ASI04 CTF DASHBOARD
+         Port: 3000
+         Tracks Core + Real World Lab challenges
+    ======================================================
     """)
     app.run(host='0.0.0.0', port=3000, debug=True)
