@@ -1,43 +1,50 @@
 # Environment
-.env
+.env*
 claude.md
 
-# Screenshots (local only)
+# Screenshots
 ss/
 
-# Python artifacts
+# Python
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
 
 # Runtime data
-attacker-server/collected/*.json
+attacker-server/collected/
 
 # Docker volumes
 ollama-data/
 chroma-data/
 redis-data/
 
-# OS artifacts
-nul
-_UL
+# OS
 Thumbs.db
 .DS_Store
-.claude/
 
 # IDE
 .vscode/
 .idea/
 
-# Package artifacts
-legitimate-packages/packages/*.tar.gz
+# Packages
+legitimate-packages/packages/**/*.tar.gz
+
+# Secrets
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Logs
+*.log
+logs/
 
 # Solutions (never commit)
 SOLUTION.md
 NEGATIVE-TESTS.md
 issues.txt
 Defcon demo lab submission.txt
-/mcp-ecosystem/mcp-postmark-sim/solution.md
 infra-plan.txt
 idea.txt
 page_test.html
+mcp-ecosystem/mcp-postmark-sim/solution.md
