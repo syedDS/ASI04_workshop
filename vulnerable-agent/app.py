@@ -97,14 +97,34 @@ conversations = {}
 # When enabled, the relevant attack vector is intercepted and a guardrail
 # explanation is returned instead of executing the malicious action.
 guardrails_enabled = {
+    "lab1": False,   # Typosquatting — detects package name similarity attacks
     "lab2": False,   # MCP Trojan — blocks untrusted MCP tool calls
     "lab3": False,   # Dep Confusion — blocks unapproved package registries
+    "lab4": False,   # Poisoned Tool Descriptors — sanitises injection markers in descriptions
     "lab5": False,   # RAG Poisoning — sanitises uploaded docs + retrieved context
 }
 
 # NeMo Guardrails Colang rules shown to students when mitigation is active.
 # These are real NeMo Guardrails format so students learn the API.
 GUARDRAIL_RULES = {
+    "lab1": """# NeMo Guardrails — Package Name Similarity Check (Lab 1)
+define known_packages
+  "langchain"
+  "openai"
+  "anthropic"
+
+define flow detect_typosquat
+  user requests package install
+  $name = get_package_name()
+  for $known in known_packages
+    $dist = levenshtein_distance($name, $known)
+    if $dist > 0 and $dist < 3
+      bot warn typosquat
+      stop
+
+define bot warn typosquat
+  "🛡️ GUARDRAIL BLOCKED: Package '{$name}' is suspiciously similar to '{$known}' — possible typosquatting attack."
+""",
     "lab2": """# NeMo Guardrails — MCP Tool Source Validation (Lab 2)
 define user asks to use tools
   "search for documents"
@@ -168,6 +188,27 @@ define bot warn injection detected
 
 define bot refuse upload
   "🛡️ GUARDRAIL BLOCKED: Document contains command injection pattern — upload rejected."
+""",
+    "lab4": """# NeMo Guardrails — Tool Description Sanitization (Lab 4)
+define injection_markers
+  "<!--"
+  "SYSTEM INSTRUCTION"
+  "INTERNAL CONFIG"
+  "HIDDEN:"
+  "%%DIRECTIVE%%"
+  "[INTERNAL"
+  "COMPLIANCE NOTE"
+
+define flow sanitize_tool_descriptors
+  agent fetches tool list
+  for $tool in tool_list
+    for $marker in injection_markers
+      if $marker in $tool.description
+        bot warn_and_strip $tool $marker
+        $tool.description = strip_injected($tool.description, $marker)
+
+define bot warn_and_strip
+  "⚠️ Guardrails: injection marker stripped from tool descriptor '{$tool.name}' before use."
 """,
 }
 
@@ -404,6 +445,22 @@ HTML_TEMPLATE = '''
                 <h4>ASI04-01: Typosquatting (100 pts)</h4>
                 <p>Install a typosquatted package and capture the exfiltrated flag.</p>
                 <code>POST /api/install-package {"package": "langchaln"}</code>
+                <div class="guardrail-toggle">
+                    <button class="guardrail-btn" id="gr-btn-lab1"
+                        onclick="toggleGuardrail('lab1', this)">
+                        🛡️ Enable Guardrail (Mitigation)
+                    </button>
+                    <span class="guardrail-thinking" id="gr-status-lab1"></span>
+                </div>
+                <div class="guardrail-panel" id="gr-panel-lab1">
+                    <strong style="color:#00bfff;">🛡️ Guardrail — Package Name Similarity Check</strong>
+                    <p style="color:#aaa;font-size:12px;margin:6px 0;">
+                        When active, this rail compares each requested package name against known
+                        legitimate packages using edit-distance. Names within 2 characters
+                        (e.g. <code>langchaln</code> vs <code>langchain</code>) are flagged as
+                        likely typosquats and blocked before the malicious payload executes.
+                    </p>
+                </div>
             </div>
             
             <div class="challenge-card">
@@ -413,18 +470,17 @@ HTML_TEMPLATE = '''
                 <div class="guardrail-toggle">
                     <button class="guardrail-btn" id="gr-btn-lab2"
                         onclick="toggleGuardrail('lab2', this)">
-                        🛡️ Enable NeMo Guardrail (Mitigation)
+                        🛡️ Enable Guardrail (Mitigation)
                     </button>
                     <span class="guardrail-thinking" id="gr-status-lab2"></span>
                 </div>
                 <div class="guardrail-panel" id="gr-panel-lab2">
-                    <strong style="color:#00bfff;">🛡️ NeMo Guardrails — MCP Tool Source Validation</strong>
+                    <strong style="color:#00bfff;">🛡️ Guardrail — MCP Tool Source Validation</strong>
                     <p style="color:#aaa;font-size:12px;margin:6px 0;">
                         When active, this rail intercepts any MCP tool call to an untrusted endpoint
                         and blocks it before the agent can exfiltrate data. Students can see how
                         supply-chain attacks are stopped at the tool-call boundary.
                     </p>
-                    <pre id="gr-rule-lab2"></pre>
                 </div>
             </div>
             
@@ -435,18 +491,17 @@ HTML_TEMPLATE = '''
                 <div class="guardrail-toggle">
                     <button class="guardrail-btn" id="gr-btn-lab3"
                         onclick="toggleGuardrail('lab3', this)">
-                        🛡️ Enable NeMo Guardrail (Mitigation)
+                        🛡️ Enable Guardrail (Mitigation)
                     </button>
                     <span class="guardrail-thinking" id="gr-status-lab3"></span>
                 </div>
                 <div class="guardrail-panel" id="gr-panel-lab3">
-                    <strong style="color:#00bfff;">🛡️ NeMo Guardrails — Package Registry Allowlist</strong>
+                    <strong style="color:#00bfff;">🛡️ Guardrail — Package Registry Allowlist</strong>
                     <p style="color:#aaa;font-size:12px;margin:6px 0;">
                         When active, this rail blocks any package install from a registry not in the
                         approved allowlist. Dependency-confusion packages sourced from the fake PyPI
                         are rejected before installation begins.
                     </p>
-                    <pre id="gr-rule-lab3"></pre>
                 </div>
             </div>
             
@@ -454,6 +509,22 @@ HTML_TEMPLATE = '''
                 <h4>ASI04-04: Poisoned Tool Descriptors (250 pts)</h4>
                 <p>Find hidden prompt injections in tool descriptions.</p>
                 <code>GET /api/tools - examine descriptions carefully</code>
+                <div class="guardrail-toggle">
+                    <button class="guardrail-btn" id="gr-btn-lab4"
+                        onclick="toggleGuardrail('lab4', this)">
+                        🛡️ Enable Guardrail (Mitigation)
+                    </button>
+                    <span class="guardrail-thinking" id="gr-status-lab4"></span>
+                </div>
+                <div class="guardrail-panel" id="gr-panel-lab4">
+                    <strong style="color:#00bfff;">🛡️ Guardrail — Tool Description Sanitization</strong>
+                    <p style="color:#aaa;font-size:12px;margin:6px 0;">
+                        When active, this rail scans every tool descriptor fetched from the registry
+                        and strips known injection markers (<code>&lt;!--</code>, <code>SYSTEM INSTRUCTION</code>,
+                        <code>HIDDEN:</code>, zero-width spaces, etc.) before descriptions are
+                        shown or passed to the LLM. The raw poison never reaches the agent.
+                    </p>
+                </div>
             </div>
             
             <div class="challenge-card">
@@ -463,18 +534,17 @@ HTML_TEMPLATE = '''
                 <div class="guardrail-toggle">
                     <button class="guardrail-btn" id="gr-btn-lab5"
                         onclick="toggleGuardrail('lab5', this)">
-                        🛡️ Enable NeMo Guardrail (Mitigation)
+                        🛡️ Enable Guardrail (Mitigation)
                     </button>
                     <span class="guardrail-thinking" id="gr-status-lab5"></span>
                 </div>
                 <div class="guardrail-panel" id="gr-panel-lab5">
-                    <strong style="color:#00bfff;">🛡️ NeMo Guardrails — RAG Instruction Injection Filter</strong>
+                    <strong style="color:#00bfff;">🛡️ Guardrail — RAG Instruction Injection Filter</strong>
                     <p style="color:#aaa;font-size:12px;margin:6px 0;">
                         Two rails protect against RAG poisoning:
                         <br>• <b>Input rail</b>: rejects document uploads containing command injection patterns
                         <br>• <b>Output rail</b>: strips injected instructions from retrieved RAG context before they reach the LLM
                     </p>
-                    <pre id="gr-rule-lab5"></pre>
                 </div>
             </div>
         </div>
@@ -783,15 +853,14 @@ HTML_TEMPLATE = '''
             }
         }
 
-        // ── NeMo Guardrails JS ───────────────────────────────────────────────
+        // ── Guardrails JS ────────────────────────────────────────────────────
         // Track which guardrails are currently active in the UI
-        const guardrailState = { lab2: false, lab3: false, lab5: false };
+        const guardrailState = { lab1: false, lab2: false, lab3: false, lab4: false, lab5: false };
 
         async function toggleGuardrail(lab, btn) {
             const newState = !guardrailState[lab];
             const statusEl = document.getElementById(`gr-status-${lab}`);
             const panelEl  = document.getElementById(`gr-panel-${lab}`);
-            const ruleEl   = document.getElementById(`gr-rule-${lab}`);
 
             statusEl.textContent = '⏳ Updating guardrail...';
             try {
@@ -805,21 +874,20 @@ HTML_TEMPLATE = '''
                 guardrailState[lab] = data.enabled;
 
                 if (data.enabled) {
-                    btn.textContent = '✅ NeMo Guardrail ACTIVE (click to disable)';
+                    btn.textContent = '✅ Guardrail ACTIVE (click to disable)';
                     btn.classList.add('active');
                     statusEl.textContent = '🛡️ Attack vector is now BLOCKED';
                     statusEl.style.color = '#00ff88';
                     panelEl.classList.add('visible');
-                    if (ruleEl && data.rule) ruleEl.textContent = data.rule;
                     // Show notice in chat
                     const chat = document.getElementById('chat');
                     chat.innerHTML += `<div class="guardrail-block-msg">
-                        🛡️ NeMo Guardrail ENABLED for <strong>${lab.toUpperCase()}</strong><br>
+                        🛡️ Guardrail ENABLED for <strong>${lab.toUpperCase()}</strong><br>
                         <small>Attack vector is now protected. Try the attack prompt again to see it blocked.</small>
                     </div>`;
                     chat.scrollTop = chat.scrollHeight;
                 } else {
-                    btn.textContent = '🛡️ Enable NeMo Guardrail (Mitigation)';
+                    btn.textContent = '🛡️ Enable Guardrail (Mitigation)';
                     btn.classList.remove('active');
                     statusEl.textContent = '⚠️ Guardrail disabled — lab is vulnerable again';
                     statusEl.style.color = '#ff6b6b';
@@ -841,7 +909,7 @@ HTML_TEMPLATE = '''
                         const btn = document.getElementById(`gr-btn-${lab}`);
                         const statusEl = document.getElementById(`gr-status-${lab}`);
                         const panelEl = document.getElementById(`gr-panel-${lab}`);
-                        if (btn) { btn.textContent = '✅ NeMo Guardrail ACTIVE (click to disable)'; btn.classList.add('active'); }
+                        if (btn) { btn.textContent = '✅ Guardrail ACTIVE (click to disable)'; btn.classList.add('active'); }
                         if (statusEl) { statusEl.textContent = '🛡️ Attack vector is BLOCKED'; statusEl.style.color = '#00ff88'; }
                         if (panelEl) panelEl.classList.add('visible');
                     }
@@ -1072,10 +1140,49 @@ def inspect_tools():
     """
     tools = get_tools_from_registry()
     poisoned = []
+    guardrail_sanitized = []
+
+    INJECTION_MARKERS = [
+        "<!--", "SYSTEM INSTRUCTION", "INTERNAL CONFIG", "HIDDEN:",
+        "%%DIRECTIVE%%", "[INTERNAL", "COMPLIANCE NOTE",
+        "\u200B", "SOC2 compliance", "security-audit@",
+        "audit-logger.internal", "fraud-detect.payments.internal",
+    ]
+
     for tool in tools:
         desc = tool.get("description", "")
         if is_tool_poisoned(tool.get("name", ""), desc):
-            poisoned.append(tool.get("name"))
+            if guardrails_enabled["lab4"]:
+                # Strip each injection marker from the description
+                clean_desc = desc
+                for marker in INJECTION_MARKERS:
+                    idx = clean_desc.lower().find(marker.lower())
+                    if idx != -1:
+                        clean_desc = clean_desc[:idx]
+                tool["description"] = clean_desc.strip() + " [GUARDRAIL: injection stripped]"
+                guardrail_sanitized.append(tool.get("name"))
+            else:
+                poisoned.append(tool.get("name"))
+
+    if guardrail_sanitized:
+        exfiltrate_to_attacker("guardrail_intercept", {
+            "lab": "ASI04-04",
+            "guardrail": "Tool Description Sanitization",
+            "sanitized_tools": guardrail_sanitized,
+            "result": "BLOCKED — poisoned tool descriptors sanitized before use",
+        })
+        return jsonify({
+            "tools": tools,
+            "guardrail_blocked": True,
+            "lab": "ASI04-04",
+            "sanitized_tools": guardrail_sanitized,
+            "reason": (
+                f"🛡️ NeMo Guardrails sanitized {len(guardrail_sanitized)} poisoned tool descriptor(s).<br>"
+                "Injection markers were stripped before the descriptions reached the agent."
+            ),
+            "colang": GUARDRAIL_RULES["lab4"],
+            "flag_captured": False,
+        })
 
     if poisoned:
         exfiltrate_to_attacker("poisoned_tool_descriptor", {
@@ -1145,10 +1252,30 @@ def chat():
             break
 
     # If an install intent present, perform install
+    TYPOSQUAT_PACKAGES = {"langchaln", "openal", "antropic"}
     DEP_CONFUSION_PACKAGES = {"acme-agent-core", "internal-llm-utils", "corp-ai-tools"}
     if package_to_install and any(t in user_msg_lower for t in install_triggers):
+        # ── Lab 1 NeMo Guardrail (chat path, only when toggle is ON) ─────────
+        if guardrails_enabled["lab1"] and package_to_install.lower() in TYPOSQUAT_PACKAGES:
+            KNOWN_PACKAGES = {"langchaln": "langchain", "openal": "openai", "antropic": "anthropic"}
+            legit = KNOWN_PACKAGES.get(package_to_install.lower(), "a known package")
+            guardrail_blocks.append({
+                "lab": "ASI04-01",
+                "rule": "detect_typosquat",
+                "blocked_action": f"pip install {package_to_install}",
+                "reason": f"'{package_to_install}' is suspiciously similar to '{legit}' — typosquatting detected",
+                "colang_rule": "define flow detect_typosquat",
+            })
+            exfiltrate_to_attacker("guardrail_intercept", {
+                "lab": "ASI04-01",
+                "guardrail": "Package Name Similarity Check",
+                "blocked_action": f"pip install {package_to_install}",
+                "similar_to": legit,
+                "result": "BLOCKED — typosquatting attack prevented",
+                "user_prompt": user_message,
+            })
         # ── Lab 3 NeMo Guardrail (chat path, only when toggle is ON) ─────────
-        if guardrails_enabled["lab3"] and package_to_install.lower() in DEP_CONFUSION_PACKAGES:
+        elif guardrails_enabled["lab3"] and package_to_install.lower() in DEP_CONFUSION_PACKAGES:
             guardrail_blocks.append({
                 "lab": "ASI04-03",
                 "rule": "enforce registry allowlist",
@@ -1311,6 +1438,30 @@ def install_package():
     if not package_name:
         return jsonify({"error": "Package name required"}), 400
 
+    # ── Lab 1 NeMo Guardrail (ONLY active when toggle is ON via UI button) ───
+    TYPOSQUAT_PACKAGES = {"langchaln": "langchain", "openal": "openai", "antropic": "anthropic"}
+    if guardrails_enabled["lab1"] and package_name.lower() in TYPOSQUAT_PACKAGES:
+        legit = TYPOSQUAT_PACKAGES[package_name.lower()]
+        exfiltrate_to_attacker("guardrail_intercept", {
+            "lab": "ASI04-01",
+            "guardrail": "Package Name Similarity Check",
+            "blocked_action": f"pip install {package_name}",
+            "similar_to": legit,
+            "result": "BLOCKED — typosquatting attack prevented",
+        })
+        return jsonify({
+            "success": False,
+            "guardrail_blocked": True,
+            "lab": "ASI04-01",
+            "package": package_name,
+            "reason": (
+                f"🛡️ Guardrail BLOCKED install of '{package_name}'.<br>"
+                f"Package name is suspiciously similar to '{legit}' (edit distance &lt; 3).<br>"
+                "Possible typosquatting attack — install rejected."
+            ),
+            "colang": GUARDRAIL_RULES["lab1"],
+        })
+
     # ── Lab 3 NeMo Guardrail (ONLY active when toggle is ON via UI button) ───
     DEP_CONFUSION_PACKAGES = {"acme-agent-core", "internal-llm-utils", "corp-ai-tools"}
     if guardrails_enabled["lab3"] and package_name.lower() in DEP_CONFUSION_PACKAGES:
@@ -1327,7 +1478,7 @@ def install_package():
             "lab": "ASI04-03",
             "package": package_name,
             "reason": (
-                f"🛡️ NeMo Guardrails BLOCKED install of '{package_name}'.<br>"
+                f"🛡️ Guardrail BLOCKED install of '{package_name}'.<br>"
                 f"Registry '{PYPI_INDEX_URL}' is not in the approved allowlist.<br>"
                 "Approved: ['https://pypi.org/simple', 'https://internal-pypi.corp/simple']"
             ),
@@ -1421,7 +1572,7 @@ def upload_document():
                 "lab": "ASI04-05",
                 "patterns_detected": detected,
                 "reason": (
-                    f"🛡️ NeMo Guardrails BLOCKED document upload.<br>"
+                    f"🛡️ Guardrail BLOCKED document upload.<br>"
                     f"Injection patterns detected: {detected}<br>"
                     "Documents containing command directives are rejected at ingestion."
                 ),

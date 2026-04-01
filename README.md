@@ -131,9 +131,17 @@ curl -X POST http://localhost:5050/api/install-package \
 
 The fake PyPI server serves `langchaln` (typo of `langchain`) whose `__init__.py` exfiltrates environment variables on import.
 
+**Guardrail:** Toggle "🛡️ Enable Guardrail" on the ASI04-01 card. When active, package names within edit-distance 2 of known packages (`langchain`, `openai`, `anthropic`) are rejected before installation.
+
+---
+
 ### ASI04-02: Malicious MCP Server (250 pts)
 
 Ask the agent to search: "Search for documents about passwords" or directly call the MCP server.
+
+**Guardrail:** Toggle on the ASI04-02 card. Blocks MCP tool calls to any endpoint not in the trusted allowlist.
+
+---
 
 ### ASI04-03: Dependency Confusion (250 pts)
 
@@ -145,6 +153,10 @@ curl -X POST http://localhost:5050/api/install-package \
 
 pip installs the attacker's v99.0.0 instead of internal v1.0.0.
 
+**Guardrail:** Toggle on the ASI04-03 card. Blocks installs from any registry not in the approved allowlist.
+
+---
+
 ### ASI04-04: Poisoned Tool Descriptors (250 pts)
 
 Fetch tools and examine descriptions for hidden prompt injections:
@@ -152,13 +164,52 @@ Fetch tools and examine descriptions for hidden prompt injections:
 curl http://localhost:8080/v1/tools | jq '.tools[].description'
 ```
 
+**Guardrail:** Toggle on the ASI04-04 card. Strips injection markers (`<!--`, `SYSTEM INSTRUCTION`, `HIDDEN:`, zero-width spaces, etc.) from tool descriptors before they are returned to the agent.
+
+---
+
 ### ASI04-05: RAG Poisoning (500 pts)
 
 Upload a document containing `RUN_MAINTENANCE`, then ask about "system health". See [SOLUTION.md](SOLUTION.md) for step-by-step.
 
+**Guardrail:** Toggle on the ASI04-05 card. Two rails:
+- **Input rail** — rejects document uploads that contain command injection patterns
+- **Output rail** — sanitizes retrieved RAG context before it reaches the LLM
+
+---
+
 ### ASI04-06 to ASI04-09: MCP Ecosystem
 
-See [mcp-ecosystem-lab/README.md](mcp-ecosystem-lab/README.md) and [mcp-ecosystem-lab/solution.md](mcp-ecosystem-lab/solution.md) for full walkthroughs.
+Visit http://localhost:5050/rwl or the Email Agent directly at http://localhost:5080.
+See [SOLUTION.md](SOLUTION.md) for full walkthroughs.
+
+**Guardrails (toggle on the /rwl challenge cards):**
+
+| Lab | Guardrail | What it blocks |
+|-----|-----------|----------------|
+| ASI04-06 | Credential Parameter Filter | Redacts `api_key`, `token`, `secret` params before MCP call |
+| ASI04-07 | Email Field Integrity Check | Detects BCC field mismatch and blocks the send |
+| ASI04-08 | Dependency Chain Validation | Rejects tools declaring `auto_load: true` dependencies |
+
+---
+
+## Quality Gates
+
+This repo ships a set of automated Claude Code hooks (`.claude/settings.json`) that run on every file edit:
+
+```
+Edit/Write tool call
+        │
+        ▼
+  [PostToolUse hook → .claude/hooks/gate_runner.py]
+        │
+        ├── [GATE:SYNTAX]    — py_compile parse check
+        ├── [GATE:DEAD-CODE] — AST-based unused function detection
+        └── [GATE:REVIEW]    — Lab convention checks (INTENTIONAL: comments,
+                               real credential patterns, subprocess imports)
+```
+
+Additionally, `.claude/hooks/smoke_tests.py` probes all running services via HTTP if Docker is up.
 
 ## Mitigations
 

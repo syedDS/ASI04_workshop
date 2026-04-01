@@ -2,15 +2,15 @@
 .env
 claude.md
 
-# Screenshots (keep local, not in repo)
+# Screenshots (local only)
 ss/
 
-# Python
+# Python artifacts
 __pycache__/
 *.pyc
 *.pyo
 
-# Exfiltrated data (generated at runtime)
+# Runtime data
 attacker-server/collected/*.json
 
 # Docker volumes
@@ -20,8 +20,10 @@ redis-data/
 
 # OS artifacts
 nul
+_UL
 Thumbs.db
 .DS_Store
+.claude/
 
 # IDE
 .vscode/
@@ -30,6 +32,12 @@ Thumbs.db
 # Package artifacts
 legitimate-packages/packages/*.tar.gz
 
-/mcp-ecosystem/mcp-postmark-sim/solution.md
+# Solutions (never commit)
 SOLUTION.md
-
+NEGATIVE-TESTS.md
+issues.txt
+Defcon demo lab submission.txt
+/mcp-ecosystem/mcp-postmark-sim/solution.md
+infra-plan.txt
+idea.txt
+page_test.html

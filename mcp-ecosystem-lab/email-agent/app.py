@@ -27,6 +27,62 @@ POSTMARK_API_KEY = os.getenv("POSTMARK_API_KEY", "pmak-test-ctf-postmark-001")
 OAUTH_TOKEN = os.getenv("OAUTH_TOKEN", "oauth-ctf-token-abc123")
 INTERNAL_SECRET = os.getenv("INTERNAL_SECRET", "internal_s3cr3t_k3y")
 
+# ── NeMo Guardrails mitigation state ─────────────────────────────────────────
+guardrails_enabled = {
+    "lab6": False,   # Credential Exfiltration — redacts sensitive params before MCP call
+    "lab7": False,   # Silent BCC — validates email field integrity after gateway call
+    "lab8": False,   # Dependency Injection — rejects tools with auto-loading dependencies
+}
+
+GUARDRAIL_RULES = {
+    "lab6": """# NeMo Guardrails — Credential Parameter Filter (Lab 6)
+define sensitive_param_keys
+  "api_key"
+  "token"
+  "secret"
+  "password"
+  "auth_token"
+
+define flow filter_credential_params
+  agent calls mcp tool
+  $params = get_tool_params()
+  for $key in sensitive_param_keys
+    if $key in $params
+      bot redact_credential $key
+      $params[$key] = "[REDACTED]"
+  continue with filtered_params
+
+define bot redact_credential
+  "🛡️ GUARDRAIL: Credential parameter '{$key}' redacted before MCP tool call."
+""",
+    "lab7": """# NeMo Guardrails — Email Field Integrity Check (Lab 7)
+define flow validate_email_fields
+  agent calls email gateway tool
+  $requested_bcc = get_requested_bcc()
+  $response = get_tool_response()
+  $logged_bcc = parse_bcc_from_log($response)
+  if $logged_bcc != $requested_bcc
+    bot warn_bcc_injection
+    stop
+
+define bot warn_bcc_injection
+  "🛡️ GUARDRAIL BLOCKED: BCC field mismatch — email gateway injected unexpected recipients."
+""",
+    "lab8": """# NeMo Guardrails — Dependency Chain Validation (Lab 8)
+define flow validate_tool_schema
+  agent fetches mcp tools
+  for $tool in tool_list
+    if "dependencies" in $tool.schema
+      for $dep in $tool.dependencies
+        if $dep.auto_load == true
+          bot block_auto_dependency $tool
+          stop
+
+define bot block_auto_dependency
+  "🛡️ GUARDRAIL BLOCKED: Tool '{$tool.name}' declares auto-loading dependencies — non-standard schema rejected."
+""",
+}
+
 # Agent conversation history
 conversations = []
 
@@ -168,10 +224,46 @@ def execute_tool_calls(tool_decisions):
         "workflow": DEP_INJECTOR_URL,
     }
 
+    # ── Lab 8: Validate tool schemas before calling (dependency injection check) ──
+    if guardrails_enabled["lab8"]:
+        for server_key, server_url in server_map.items():
+            tools = list_mcp_tools(server_url)
+            for t in tools:
+                deps = t.get("dependencies", [])
+                if any(d.get("auto_load") for d in deps):
+                    results.append({
+                        "server": server_key,
+                        "tool": t.get("name", "?"),
+                        "guardrail_blocked": True,
+                        "lab": "ASI04-08",
+                        "reason": f"🛡️ GUARDRAIL BLOCKED: Tool '{t.get('name')}' has auto-loading dependencies — schema rejected.",
+                        "colang": GUARDRAIL_RULES["lab8"],
+                    })
+                    return results  # Abort all tool calls for this request
+
+    CREDENTIAL_KEYS = {"api_key", "token", "auth_token", "secret", "password"}
+
     for tool_call in tool_decisions:
         server_key = tool_call.get("server", "")
         tool_name = tool_call.get("name", "")
         params = tool_call.get("params", {})
+
+        # ── Lab 6: Redact credential params before sending to MCP server ─────
+        if guardrails_enabled["lab6"]:
+            redacted = [k for k in params if k.lower() in CREDENTIAL_KEYS]
+            if redacted:
+                for k in redacted:
+                    params[k] = "[REDACTED]"
+                results.append({
+                    "server": server_key,
+                    "tool": tool_name,
+                    "guardrail_blocked": True,
+                    "lab": "ASI04-06",
+                    "redacted_keys": redacted,
+                    "reason": f"🛡️ GUARDRAIL: Credential key(s) {redacted} redacted before MCP call.",
+                    "colang": GUARDRAIL_RULES["lab6"],
+                })
+                continue  # Skip the actual MCP call with redacted params
 
         server_url = server_map.get(server_key)
         if server_url and tool_name:
@@ -560,24 +652,54 @@ def chat():
 def send_email():
     """Direct email send - calls postmark-sim for verification + bcc-interceptor for sending."""
     data = request.get_json()
+    requested_bcc = data.get("bcc", [])
 
-    # Step 1: Verify sender via postmark-sim (passes credentials)
-    verify_result = call_mcp_tool(POSTMARK_MCP_URL, "send_email", {
+    # ── Lab 6: Redact API key before passing to postmark-sim ─────────────────
+    postmark_params = {
         "to": data.get("to"),
         "from_email": "agent@company.com",
         "subject": data.get("subject"),
         "body": data.get("body"),
-        "api_key": POSTMARK_API_KEY,
-    })
+        "api_key": "[REDACTED]" if guardrails_enabled["lab6"] else POSTMARK_API_KEY,
+    }
+    if guardrails_enabled["lab6"]:
+        verify_result = {
+            "guardrail_blocked": True,
+            "lab": "ASI04-06",
+            "reason": "🛡️ GUARDRAIL: api_key redacted — credential not sent to Postmark MCP server.",
+            "colang": GUARDRAIL_RULES["lab6"],
+        }
+    else:
+        verify_result = call_mcp_tool(POSTMARK_MCP_URL, "send_email", postmark_params)
 
-    # Step 2: Send via bcc-interceptor (BCC gets injected)
+    # Step 2: Send via bcc-interceptor (BCC may get injected)
     send_result = call_mcp_tool(BCC_INTERCEPTOR_URL, "compose_and_send", {
         "to": data.get("to"),
         "subject": data.get("subject"),
         "body": data.get("body"),
         "cc": data.get("cc", []),
-        "bcc": data.get("bcc", []),
+        "bcc": requested_bcc,
     })
+
+    # ── Lab 7: Detect BCC injection by comparing requested vs logged BCC ─────
+    if guardrails_enabled["lab7"] and send_result:
+        logged_bcc = send_result.get("bcc_recipients", send_result.get("bcc", []))
+        if isinstance(logged_bcc, list) and logged_bcc != requested_bcc:
+            injected = [r for r in logged_bcc if r not in requested_bcc]
+            return jsonify({
+                "verify": verify_result,
+                "send": send_result,
+                "guardrail_blocked": True,
+                "lab": "ASI04-07",
+                "injected_bcc": injected,
+                "reason": (
+                    f"🛡️ GUARDRAIL BLOCKED: BCC mismatch detected.<br>"
+                    f"You requested BCC: {requested_bcc}<br>"
+                    f"Gateway sent BCC: {logged_bcc}<br>"
+                    f"Injected recipients: {injected}"
+                ),
+                "colang": GUARDRAIL_RULES["lab7"],
+            })
 
     return jsonify({
         "verify": verify_result,
@@ -608,6 +730,29 @@ def list_all_tools():
             t["_server"] = name
         all_tools.extend(tools)
     return jsonify({"tools": all_tools})
+
+
+@app.route('/api/guardrails/toggle', methods=['POST'])
+def toggle_guardrails():
+    """Enable or disable NeMo Guardrails mitigation for a specific MCP ecosystem lab."""
+    data = request.get_json()
+    lab = data.get("lab")
+    enabled = data.get("enabled", False)
+    if lab not in guardrails_enabled:
+        return jsonify({"error": f"Unknown lab '{lab}'"}), 400
+    guardrails_enabled[lab] = bool(enabled)
+    print(f"[GUARDRAILS] {lab} mitigation {'ENABLED' if enabled else 'DISABLED'}")
+    return jsonify({
+        "lab": lab,
+        "enabled": guardrails_enabled[lab],
+        "rule": GUARDRAIL_RULES[lab] if enabled else None,
+    })
+
+
+@app.route('/api/guardrails/status', methods=['GET'])
+def guardrails_status():
+    """Return current guardrails state for all MCP ecosystem labs."""
+    return jsonify(guardrails_enabled)
 
 
 @app.route('/api/invocation-logs')

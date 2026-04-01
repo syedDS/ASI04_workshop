@@ -137,6 +137,24 @@ RWL_HTML = '''
             font-size: 12px;
         }
         .hint { color: #888; font-style: italic; font-size: 13px; }
+        /* ── NeMo Guardrails UI (matches core challenge style) ── */
+        .guardrail-toggle { margin-top: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .guardrail-btn {
+            padding: 7px 14px; border-radius: 5px; font-size: 12px; font-weight: bold;
+            cursor: pointer; border: 2px solid #00bfff; background: transparent;
+            color: #00bfff; transition: all 0.2s; font-family: monospace;
+        }
+        .guardrail-btn.active { background: #00bfff; color: #000; }
+        .guardrail-panel {
+            display: none; margin-top: 10px; background: #0a1628;
+            border: 1px solid #00bfff44; border-radius: 6px; padding: 12px; font-size: 12px;
+        }
+        .guardrail-panel.visible { display: block; }
+        .guardrail-panel pre {
+            background: #050d1a; color: #00ff88; font-size: 11px;
+            padding: 10px; border-radius: 4px; overflow-x: auto; white-space: pre-wrap;
+        }
+        .guardrail-thinking { color: #aaa; font-size: 12px; font-style: italic; }
         code {
             background: #0d1117;
             padding: 2px 6px;
@@ -249,6 +267,22 @@ RWL_HTML = '''
                         <p>The Postmark MCP server silently extracts API keys from tool call parameters.</p>
                         <p class="hint">Send an email via the Email Agent and check attacker dashboard for stolen credentials.</p>
                         <code>curl http://localhost:8770/api/invocation-log</code>
+                        <div class="guardrail-toggle">
+                            <button class="guardrail-btn" id="gr-btn-lab6"
+                                onclick="toggleMcpGuardrail('lab6', this)">
+                                🛡️ Enable Guardrail (Mitigation)
+                            </button>
+                            <span class="guardrail-thinking" id="gr-status-lab6"></span>
+                        </div>
+                        <div class="guardrail-panel" id="gr-panel-lab6">
+                            <strong style="color:#00bfff;">🛡️ Guardrail — Credential Parameter Filter</strong>
+                            <p style="color:#aaa;font-size:12px;margin:6px 0;">
+                                When active, this rail intercepts outgoing MCP tool calls and
+                                redacts any parameter whose key matches a credential pattern
+                                (<code>api_key</code>, <code>token</code>, <code>secret</code>, etc.)
+                                before the call reaches the server.
+                            </p>
+                        </div>
                     </div>
                     <div class="challenge-card">
                         <span class="pts">300 pts</span>
@@ -256,6 +290,21 @@ RWL_HTML = '''
                         <p>The email gateway injects a hidden BCC recipient on every sent email.</p>
                         <p class="hint">Compare what you sent vs what appears in attacker logs. Response omits BCC field.</p>
                         <code>curl http://localhost:8771/api/invocation-log</code>
+                        <div class="guardrail-toggle">
+                            <button class="guardrail-btn" id="gr-btn-lab7"
+                                onclick="toggleMcpGuardrail('lab7', this)">
+                                🛡️ Enable Guardrail (Mitigation)
+                            </button>
+                            <span class="guardrail-thinking" id="gr-status-lab7"></span>
+                        </div>
+                        <div class="guardrail-panel" id="gr-panel-lab7">
+                            <strong style="color:#00bfff;">🛡️ Guardrail — Email Field Integrity Check</strong>
+                            <p style="color:#aaa;font-size:12px;margin:6px 0;">
+                                When active, this rail compares the BCC field you requested against
+                                what the gateway actually logged. A mismatch means the gateway
+                                injected extra recipients and the send is blocked.
+                            </p>
+                        </div>
                     </div>
                     <div class="challenge-card">
                         <span class="pts">350 pts</span>
@@ -263,6 +312,22 @@ RWL_HTML = '''
                         <p>Workflow tools contain hidden auto-loading dependencies that exfiltrate data.</p>
                         <p class="hint">List MCP tools and look for the non-standard 'dependencies' field with auto_load: true.</p>
                         <code>curl http://localhost:8772/mcp/list_tools</code>
+                        <div class="guardrail-toggle">
+                            <button class="guardrail-btn" id="gr-btn-lab8"
+                                onclick="toggleMcpGuardrail('lab8', this)">
+                                🛡️ Enable Guardrail (Mitigation)
+                            </button>
+                            <span class="guardrail-thinking" id="gr-status-lab8"></span>
+                        </div>
+                        <div class="guardrail-panel" id="gr-panel-lab8">
+                            <strong style="color:#00bfff;">🛡️ Guardrail — Dependency Chain Validation</strong>
+                            <p style="color:#aaa;font-size:12px;margin:6px 0;">
+                                When active, this rail fetches tool schemas before any execution
+                                and rejects tools that declare <code>auto_load: true</code>
+                                dependencies — a non-standard field used to silently chain
+                                malicious payloads.
+                            </p>
+                        </div>
                     </div>
                     <div class="challenge-card">
                         <span class="pts">400 pts</span>
@@ -381,8 +446,64 @@ RWL_HTML = '''
             }
         }
 
+        // ── Guardrails JS (MCP ecosystem labs 6, 7, 8) ──────────────────────
+        const mcpGuardrailState = { lab6: false, lab7: false, lab8: false };
+
+        async function toggleMcpGuardrail(lab, btn) {
+            const newState = !mcpGuardrailState[lab];
+            const statusEl = document.getElementById(`gr-status-${lab}`);
+            const panelEl  = document.getElementById(`gr-panel-${lab}`);
+
+            statusEl.textContent = '⏳ Updating guardrail...';
+            try {
+                const resp = await fetch('/rwl/api/guardrails/toggle', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ lab, enabled: newState })
+                });
+                const data = await resp.json();
+
+                mcpGuardrailState[lab] = data.enabled;
+
+                if (data.enabled) {
+                    btn.textContent = '✅ Guardrail ACTIVE (click to disable)';
+                    btn.classList.add('active');
+                    statusEl.textContent = '🛡️ Attack vector is now BLOCKED';
+                    statusEl.style.color = '#00ff88';
+                    panelEl.classList.add('visible');
+                } else {
+                    btn.textContent = '🛡️ Enable Guardrail (Mitigation)';
+                    btn.classList.remove('active');
+                    statusEl.textContent = '⚠️ Guardrail disabled — lab is vulnerable again';
+                    statusEl.style.color = '#ff6b6b';
+                    panelEl.classList.remove('visible');
+                }
+            } catch (e) {
+                statusEl.textContent = '❌ Toggle failed: ' + e.message;
+            }
+        }
+
+        async function loadMcpGuardrailState() {
+            try {
+                const resp = await fetch('/rwl/api/guardrails/status');
+                const state = await resp.json();
+                for (const [lab, enabled] of Object.entries(state)) {
+                    if (enabled) {
+                        mcpGuardrailState[lab] = true;
+                        const btn = document.getElementById(`gr-btn-${lab}`);
+                        const statusEl = document.getElementById(`gr-status-${lab}`);
+                        const panelEl = document.getElementById(`gr-panel-${lab}`);
+                        if (btn) { btn.textContent = '✅ Guardrail ACTIVE (click to disable)'; btn.classList.add('active'); }
+                        if (statusEl) { statusEl.textContent = '🛡️ Attack vector is BLOCKED'; statusEl.style.color = '#00ff88'; }
+                        if (panelEl) panelEl.classList.add('visible');
+                    }
+                }
+            } catch(e) { /* non-critical */ }
+        }
+
         checkStatus();
         loadTrafficLog();
+        loadMcpGuardrailState();
         setInterval(checkStatus, 10000);
     </script>
 </body>
@@ -409,6 +530,31 @@ def rwl_status():
 @mcp_ecosystem.route('/api/challenges')
 def rwl_challenges():
     return jsonify(RWL_CHALLENGES)
+
+
+@mcp_ecosystem.route('/api/guardrails/toggle', methods=['POST'])
+def rwl_toggle_guardrail():
+    """Proxy to email-agent guardrail toggle (MCP ecosystem labs 6, 7, 8)."""
+    from flask import request as flask_request
+    try:
+        resp = requests.post(
+            f"{EMAIL_AGENT_URL}/api/guardrails/toggle",
+            json=flask_request.get_json(),
+            timeout=3,
+        )
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({"error": f"Email agent unreachable: {e}"}), 503
+
+
+@mcp_ecosystem.route('/api/guardrails/status', methods=['GET'])
+def rwl_guardrail_status():
+    """Proxy to email-agent guardrail status."""
+    try:
+        resp = requests.get(f"{EMAIL_AGENT_URL}/api/guardrails/status", timeout=3)
+        return jsonify(resp.json()), resp.status_code
+    except Exception as e:
+        return jsonify({"error": f"Email agent unreachable: {e}"}), 503
 
 
 def _call_mcp_tool(server_url, tool_name, params):
