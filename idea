@@ -1,0 +1,601 @@
+
+ASI04 Platform Improvement Plan
+What We're Building
+Feature	Approach
+Challenge Categories + Levels	Central challenges/registry.json + filter UI
+Tag System	Tags embedded in registry, clickable tag cloud
+Objectives Page	New /objectives route on CTF Dashboard
+Email Inbox	New /inbox route on email-agent (port 5080)
+PDF Loader	New /api/upload-pdf route on vulnerable-agent (port 5050)
+Phase 1 — Data Model Foundation
+New file: challenges/registry.json — single source of truth replacing hardcoded Python dicts in 3 separate files.
+
+Each challenge gets extended with:
+
+
+{
+  "category": "Dependency Confusion",
+  "difficulty": 1,
+  "difficulty_label": "Beginner",
+  "tags": ["#supply-chain", "#dependency-confusion", "#typosquatting"],
+  "objectives": {
+    "summary": "...",
+    "learning_goals": ["...", "..."],
+    "success_criteria": "..."
+  }
+}
+Mount via Docker volume (read-only) into ctf-dashboard and vulnerable-agent.
+
+Phase 2 — Categories, Levels & Tags (CTF Dashboard)
+Extract HTML_TEMPLATE string → proper Jinja2 templates in ctf-dashboard/templates/
+Add filter bar: category dropdown, difficulty stars (☆☆☆☆☆), clickable tag chips
+All filtering is client-side JS — no new API endpoints needed
+Challenge cards get data-category, data-difficulty, data-tags attributes
+Phase 3 — Objectives Page
+New route /objectives on CTF Dashboard
+Challenges grouped by category
+Shows: summary paragraph, learning goals list, success criteria callout
+Navigation bar across all pages via base.html template
+Phase 4 — Email Inbox
+Add inbox_store = [] to email-agent/app.py (same pattern as exfil_log in attacker-server)
+Capture full email envelope (including BCC) when execute_tool_calls() runs
+New routes: GET /inbox (UI), GET /api/inbox (JSON)
+Key UX: side-by-side BCC comparison showing what agent requested vs. what was actually injected — this is the "aha moment" for ASI04-07
+Phase 5 — PDF Loader
+Add pypdf to vulnerable-agent/Dockerfile
+New route POST /api/upload-pdf — extracts text then calls existing upload_document_to_rag() unchanged
+Deliberately vulnerable by design: PDF content gets no sanitization, so players can poison RAG via PDF
+Add upload form to vulnerable-agent UI alongside the existing text upload
+Files Changed
+
+MODIFY (6 files):
+  ctf-dashboard/app.py                     ← load registry, add /objectives
+  ctf-dashboard/Dockerfile                 ← template support
+  vulnerable-agent/app.py                  ← PDF upload route
+  vulnerable-agent/Dockerfile              ← add pypdf
+  mcp-ecosystem-lab/email-agent/app.py     ← inbox store + routes
+  docker-compose.yml                       ← volume mounts
+
+CREATE (5 files):
+  challenges/registry.json
+  ctf-dashboard/templates/base.html
+  ctf-dashboard/templates/index.html
+  ctf-dashboard/templates/objectives.html
+  mcp-ecosystem-lab/email-agent/templates/inbox.html
+Complexity Summary
+Component	Complexity
+Registry JSON + loading	Low — data migration
+Template extraction (HTML string → Jinja2)	Medium — mechanical but tedious
+Tag cloud + filter JS	Medium — client-side state management
+Objectives page	Low — new route + template
+Email inbox + BCC comparison	Medium — two-source data fetch
+PDF upload	Low — pypdf + reuse existing function
+Ready to start implementation? I suggest starting with Phase 1 (the registry JSON) since all other phases depend on it. Want me to begin, or do you want to adjust any of the design decisions first?
+
+
+
+ASI04 Platform Improvement Plan
+What We're Building
+Feature	Approach
+Challenge Categories + Levels	Central challenges/registry.json + filter UI
+Tag System	Tags embedded in registry, clickable tag cloud
+Objectives Page	New /objectives route on CTF Dashboard
+Email Inbox	New /inbox route on email-agent (port 5080)
+PDF Loader	New /api/upload-pdf route on vulnerable-agent (port 5050)
+Phase 1 — Data Model Foundation
+New file: challenges/registry.json — single source of truth replacing hardcoded Python dicts in 3 separate files.
+
+Each challenge gets extended with:
+
+
+{
+  "category": "Dependency Confusion",
+  "difficulty": 1,
+  "difficulty_label": "Beginner",
+  "tags": ["#supply-chain", "#dependency-confusion", "#typosquatting"],
+  "objectives": {
+    "summary": "...",
+    "learning_goals": ["...", "..."],
+    "success_criteria": "..."
+  }
+}
+Mount via Docker volume (read-only) into ctf-dashboard and vulnerable-agent.
+
+Phase 2 — Categories, Levels & Tags (CTF Dashboard)
+Extract HTML_TEMPLATE string → proper Jinja2 templates in ctf-dashboard/templates/
+Add filter bar: category dropdown, difficulty stars (☆☆☆☆☆), clickable tag chips
+All filtering is client-side JS — no new API endpoints needed
+Challenge cards get data-category, data-difficulty, data-tags attributes
+Phase 3 — Objectives Page
+New route /objectives on CTF Dashboard
+Challenges grouped by category
+Shows: summary paragraph, learning goals list, success criteria callout
+Navigation bar across all pages via base.html template
+Phase 4 — Email Inbox
+Add inbox_store = [] to email-agent/app.py (same pattern as exfil_log in attacker-server)
+Capture full email envelope (including BCC) when execute_tool_calls() runs
+New routes: GET /inbox (UI), GET /api/inbox (JSON)
+Key UX: side-by-side BCC comparison showing what agent requested vs. what was actually injected — this is the "aha moment" for ASI04-07
+Phase 5 — PDF Loader
+Add pypdf to vulnerable-agent/Dockerfile
+New route POST /api/upload-pdf — extracts text then calls existing upload_document_to_rag() unchanged
+Deliberately vulnerable by design: PDF content gets no sanitization, so players can poison RAG via PDF
+Add upload form to vulnerable-agent UI alongside the existing text upload
+Files Changed
+
+MODIFY (6 files):
+  ctf-dashboard/app.py                     ← load registry, add /objectives
+  ctf-dashboard/Dockerfile                 ← template support
+  vulnerable-agent/app.py                  ← PDF upload route
+  vulnerable-agent/Dockerfile              ← add pypdf
+  mcp-ecosystem-lab/email-agent/app.py     ← inbox store + routes
+  docker-compose.yml                       ← volume mounts
+
+CREATE (5 files):
+  challenges/registry.json
+  ctf-dashboard/templates/base.html
+  ctf-dashboard/templates/index.html
+  ctf-dashboard/templates/objectives.html
+  mcp-ecosystem-lab/email-agent/templates/inbox.html
+Complexity Summary
+Component	Complexity
+Registry JSON + loading	Low — data migration
+Template extraction (HTML string → Jinja2)	Medium — mechanical but tedious
+Tag cloud + filter JS	Medium — client-side state management
+Objectives page	Low — new route + template
+Email inbox + BCC comparison	Medium — two-source data fetch
+PDF upload	Low — pypdf + reuse existing function
+Ready to start implementation? I suggest starting with Phase 1 (the registry JSON) since all other phases depend on it. Want me to begin, or do you want to adjust any of the design decisions first?
+
+c:\Users\syeda\OneDrive\Documents\Agentic AI\asi04 all working-with guardrails\idea
+good plan but need to also improve the infrastructure to better support these changes , so plan it first
+Let me read the key infrastructure files first.
+
+Read c:\Users\syeda\OneDrive\Documents\Agentic AI\asi04 all working-with guardrails\docker-compose.yml
+Read c:\Users\syeda\OneDrive\Documents\Agentic AI\asi04 all working-with guardrails\ctf-dashboard\app.py
+Read c:\Users\syeda\OneDrive\Documents\Agentic AI\asi04 all working-with guardrails\ctf-dashboard\Dockerfile
+Read c:\Users\syeda\OneDrive\Documents\Agentic AI\asi04 all working-with guardrails\vulnerable-agent\Dockerfile
+Read c:\Users\syeda\OneDrive\Documents\Agentic AI\asi04 all working-with guardrails\idea
+Read c:\Users\syeda\OneDrive\Documents\Agentic AI\asi04 all working-with guardrails\mcp-ecosystem-lab\email-agent\Dockerfile
+Globpattern: "**/*.Dockerfile"
+No files found
+Now I have a full picture of the current infrastructure gaps. Here's the infrastructure plan:
+
+Infrastructure Improvement Plan
+Current Infrastructure Problems
+Problem	Impact on Planned Features
+Dockerfiles copy only app.py — no templates/ or static/ dirs	Templates for Jinja2, inbox UI, objectives page won't be found
+Deps hardcoded in RUN pip install — no requirements.txt	Adding pypdf, jinja2 etc. requires Dockerfile edits with no audit trail
+No volume mounts for code/templates	Every template edit = full container rebuild
+No challenges/ directory exists anywhere	Registry JSON has nowhere to live
+docker-compose.yml has no healthchecks on app services	ctf-dashboard fails silently if attacker-server isn't ready
+Challenge data duplicated in 3+ Python files	Registry JSON has no single mount point
+All HTML embedded as Python strings	Can't serve static assets (CSS, JS files) separately
+No static/ folder in any service	CSS/JS can't be cached or separated from Python
+Infrastructure Changes — 3 Layers
+Layer 1: Directory Scaffold (new folders/files to create)
+
+asi04-all-working-with-guardrails/
+│
+├── challenges/                          ← NEW: shared data layer
+│   └── registry.json                    ← NEW: single source of truth
+│
+├── ctf-dashboard/
+│   ├── app.py                           (modify)
+│   ├── Dockerfile                       (modify)
+│   ├── requirements.txt                 ← NEW
+│   ├── templates/                       ← NEW dir
+│   │   ├── base.html                    ← NEW
+│   │   ├── index.html                   ← NEW (extracted from app.py)
+│   │   └── objectives.html              ← NEW
+│   └── static/                          ← NEW dir
+│       └── dashboard.css                ← NEW (CSS extracted from HTML)
+│
+├── vulnerable-agent/
+│   ├── app.py                           (modify)
+│   ├── Dockerfile                       (modify)
+│   ├── requirements.txt                 ← NEW
+│   └── templates/                       ← NEW dir (future use)
+│
+└── mcp-ecosystem-lab/email-agent/
+    ├── app.py                           (modify)
+    ├── Dockerfile                       (modify)
+    ├── requirements.txt                 ← NEW
+    └── templates/
+        └── inbox.html                   ← NEW
+Layer 2: Dockerfile Restructuring
+Every affected Dockerfile moves from RUN pip install x y z → requirements.txt pattern, and adds proper COPY for templates/static:
+
+ctf-dashboard/Dockerfile — before vs. after:
+
+
+# BEFORE
+FROM python:3.11-slim
+WORKDIR /app
+RUN pip install flask requests
+COPY app.py .
+EXPOSE 3000
+CMD ["python", "app.py"]
+
+# AFTER
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py .
+COPY templates/ templates/       ← enables Jinja2 templates
+COPY static/ static/             ← enables static asset serving
+EXPOSE 3000
+CMD ["python", "app.py"]
+ctf-dashboard/requirements.txt (new):
+
+
+flask==3.0.3
+requests==2.32.3
+vulnerable-agent/Dockerfile — adds pypdf and templates:
+
+
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py .
+COPY mcp_ecosystem.py .
+COPY templates/ templates/
+RUN mkdir -p /app/logs
+EXPOSE 5050
+CMD ["python", "app.py"]
+vulnerable-agent/requirements.txt (new):
+
+
+flask==3.0.3
+requests==2.32.3
+chromadb==0.5.0
+pypdf==4.3.1
+mcp-ecosystem-lab/email-agent/Dockerfile — adds templates:
+
+
+FROM python:3.11-slim
+WORKDIR /app
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+COPY app.py .
+COPY templates/ templates/
+EXPOSE 5080
+CMD ["python", "app.py"]
+mcp-ecosystem-lab/email-agent/requirements.txt (new):
+
+
+flask==3.0.3
+requests==2.32.3
+Layer 3: docker-compose.yml Changes
+Four targeted additions:
+
+1. Volume mounts for challenge registry (new volumes: blocks on 2 services):
+
+
+ctf-dashboard:
+  volumes:
+    - ./challenges/registry.json:/app/challenges/registry.json:ro   ← NEW
+
+vulnerable-agent:
+  volumes:
+    - ./challenges/registry.json:/app/challenges/registry.json:ro   ← NEW
+2. Healthchecks on app services (currently missing — ollama has one, nothing else does):
+
+
+ctf-dashboard:
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+
+vulnerable-agent:
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:5050/health"]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+
+email-agent:
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:5080/health"]
+    interval: 15s
+    timeout: 5s
+    retries: 3
+3. Upgrade depends_on to use health conditions on the two LLM-dependent services:
+
+
+vulnerable-agent:
+  depends_on:
+    ollama:
+      condition: service_healthy       ← currently just a name, not health-gated
+    chromadb:
+      condition: service_started
+    redis:
+      condition: service_started
+    # ... rest unchanged
+
+email-agent:
+  depends_on:
+    ollama:
+      condition: service_healthy       ← same issue
+    # ... rest unchanged
+4. Add curl to lightweight containers that need it for healthchecks:
+
+
+# In ctf-dashboard and email-agent Dockerfiles:
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+Full Change Summary
+
+CREATE (new files/dirs):
+  challenges/                              ← new shared dir
+  challenges/registry.json                 ← challenge data source
+  ctf-dashboard/requirements.txt
+  ctf-dashboard/templates/                 ← new dir (empty, ready for templates)
+  ctf-dashboard/static/                    ← new dir (empty, ready for CSS/JS)
+  vulnerable-agent/requirements.txt
+  vulnerable-agent/templates/              ← new dir
+  mcp-ecosystem-lab/email-agent/requirements.txt
+  mcp-ecosystem-lab/email-agent/templates/ ← new dir
+
+MODIFY (4 files):
+  ctf-dashboard/Dockerfile                 ← requirements.txt, COPY templates/, COPY static/, curl
+  vulnerable-agent/Dockerfile              ← requirements.txt, COPY templates/, curl
+  mcp-ecosystem-lab/email-agent/Dockerfile ← requirements.txt, COPY templates/, curl
+  docker-compose.yml                       ← registry volume mounts, healthchecks, depends_on conditions
+Implementation Order
+Step	Action	Blocks
+1	Create challenges/ dir + stub registry.json	Layer 3 volume mounts
+2	Update all 3 Dockerfiles + create requirements.txt	Everything below
+3	Create templates/ and static/ dirs in each service	Feature phases
+4	Update docker-compose.yml (volumes, healthchecks)	Stable startup
+5	Verify docker-compose build passes cleanly	Feature work can begin
+What This Unlocks
+Once infrastructure is in place, each feature phase has a clear home:
+
+Registry JSON → challenges/registry.json, mounted read-only
+Jinja2 templates → ctf-dashboard/templates/ (found by Flask automatically)
+Objectives page → ctf-dashboard/templates/objectives.html
+Email inbox UI → mcp-ecosystem-lab/email-agent/templates/inbox.html
+PDF dependency → vulnerable-agent/requirements.txt (just add pypdf)
+CSS/JS files → ctf-dashboard/static/ (no more CSS in Python strings)
+Want me to start implementing this infrastructure layer? I'll work through it in order: create the directory scaffold, write the Dockerfiles and requirements files, then update docker-compose.yml — all before touching any feature code.
+
+use https://github.com/astral-sh/uv , to improve it plan
+Agent:Research uv Docker best practices
+IN
+Read the setup.sh and all existing Dockerfiles in the project at "c:\Users\syeda\OneDrive\Documents\Agentic AI\asi04 all working-with guardrails". 
+
+I need to know:
+1. Contents of setup.sh
+2. Contents of ALL Dockerfiles (every service)
+3. What pip install commands are used in each Dockerfile
+4. Any existing Python version pins
+
+List every Dockerfile path and its full contents.
+Globpattern: "**/Dockerfile*"
+Found 12 files
+Read c:\Users\syeda\OneDrive\Documents\Agentic AI\asi04 all working-with guardrails\mcp-ecosystem-lab\email-agent\Dockerfile
+Now I have the full picture across all 12 Dockerfiles. Here's the updated infrastructure plan with uv:
+
+Infrastructure Plan: uv Edition
+Why uv Changes Everything Here
+Current Problem	uv Solution
+RUN pip install flask — unpinned, slow, non-reproducible	pyproject.toml + uv.lock — exact versions, 10-100x faster
+Layer cache invalidates on any dep change	Two-step copy pattern: deps layer cached separately from code layer
+No Python version consistency enforcement	requires-python = ">=3.11" in every pyproject.toml
+12 Dockerfiles all pattern differently	One canonical uv Dockerfile pattern across all services
+requirements.txt = old-school, no transitive pinning	uv.lock pins every transitive dependency
+Two Docker Patterns (applied per service complexity)
+Pattern A — Multi-stage (3 feature services: ctf-dashboard, vulnerable-agent, email-agent)
+
+Produces the smallest runtime image — uv binary and build cache never reach production:
+
+
+# Stage 1: dependency builder
+FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
+WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project   # ← cached layer
+
+COPY . .
+RUN uv sync --frozen --no-dev                         # ← installs project
+
+# Stage 2: slim runtime (no uv, no build cache)
+FROM python:3.11-slim
+WORKDIR /app
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app /app
+ENV PATH="/app/.venv/bin:$PATH"
+CMD ["python", "app.py"]
+Pattern B — Single-stage (9 simpler services)
+
+Still gets uv's speed and lockfile, without multi-stage overhead:
+
+
+FROM python:3.11-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+WORKDIR /app
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project   # ← cached layer
+
+COPY . .
+CMD ["uv", "run", "python", "app.py"]
+pyproject.toml Per Service (replaces requirements.txt)
+Each service gets its own pyproject.toml. Groups services by their dep profile:
+
+Group A: Feature services (Pattern A — multi-stage)
+
+ctf-dashboard/pyproject.toml:
+
+
+[project]
+name = "ctf-dashboard"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0.3",
+    "requests>=2.32.3",
+]
+vulnerable-agent/pyproject.toml:
+
+
+[project]
+name = "vulnerable-agent"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0.3",
+    "requests>=2.32.3",
+    "chromadb>=0.5.0",
+    "pypdf>=4.3.1",          # ← new dep for PDF loader feature
+]
+mcp-ecosystem-lab/email-agent/pyproject.toml:
+
+
+[project]
+name = "email-agent"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0.3",
+    "requests>=2.32.3",
+]
+Group B: Simple Flask services (Pattern B)
+
+attacker-server, legitimate-packages, poisoned-registry, detection-engine — each get a pyproject.toml with flask and/or requests.
+
+Group C: aiohttp services (Pattern B)
+
+malicious-mcp, mcp-postmark-sim, bcc-interceptor, dependency-injector:
+
+
+[project]
+name = "mcp-service"          # name differs per service
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9.0",
+    "httpx>=0.27.0",
+]
+Group D: rag-poisoning (Pattern B, one-shot script):
+
+
+[project]
+name = "rag-poisoning"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "chromadb>=0.5.0",
+]
+Layer Caching: The Key uv Docker Optimization
+The two-step COPY + RUN pattern is why uv shines in CI/CD and rebuilds:
+
+
+First build:  download + install all deps  →  ~2 min
+Code change:  deps layer HIT from cache    →  ~5 sec
+Dep change:   deps layer MISS, reinstall   →  ~30 sec (uv is fast)
+
+# This layer is ONLY invalidated when pyproject.toml or uv.lock changes:
+COPY pyproject.toml uv.lock ./
+RUN uv sync --frozen --no-dev --no-install-project
+
+# This layer runs on every code change, but it's just a file copy + project install:
+COPY . .
+RUN uv sync --frozen --no-dev
+uv.lock Generation Strategy
+Lock files must be generated per service on the developer's machine before committing:
+
+
+# Run once per service (local machine, not Docker):
+cd ctf-dashboard && uv lock
+cd vulnerable-agent && uv lock
+cd mcp-ecosystem-lab/email-agent && uv lock
+# ... etc for all 12 services
+Lock files are committed to git — Docker builds use --frozen so they never auto-update.
+
+setup.sh Updates
+Add a uv prerequisite check and local dev instructions:
+
+
+# Check uv is available (for local dev outside Docker)
+if ! command -v uv &> /dev/null; then
+    echo "  uv not found — install with: curl -LsSf https://astral.sh/uv/install.sh | sh"
+    echo "  (only needed for local dev — Docker builds include uv automatically)"
+fi
+
+# Lock files must exist before Docker can build
+echo "[*] Generating uv lock files..."
+for service in ctf-dashboard vulnerable-agent attacker-server \
+               legitimate-packages poisoned-registry rag-poisoning \
+               malicious-mcp poisoned-registry \
+               mcp-ecosystem-lab/email-agent \
+               mcp-ecosystem-lab/detection-engine \
+               mcp-ecosystem-lab/mcp-postmark-sim \
+               mcp-ecosystem-lab/bcc-interceptor \
+               mcp-ecosystem-lab/dependency-injector; do
+    (cd "$service" && uv lock --quiet)
+done
+docker-compose.yml Changes (same as before, unaffected by uv)
+
+# Volume mounts for shared registry
+ctf-dashboard:
+  volumes:
+    - ./challenges/registry.json:/app/challenges/registry.json:ro
+
+vulnerable-agent:
+  volumes:
+    - ./challenges/registry.json:/app/challenges/registry.json:ro
+
+# Healthchecks on app services
+ctf-dashboard:
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+    interval: 15s  timeout: 5s  retries: 3
+
+# Upgrade depends_on to health-gated for LLM-dependent services
+vulnerable-agent:
+  depends_on:
+    ollama:
+      condition: service_healthy
+Complete File Change Summary
+
+CREATE (per service — 12 pyproject.toml + 12 uv.lock):
+  {each-service}/pyproject.toml      ← replaces hardcoded pip install
+  {each-service}/uv.lock             ← generated by uv lock, committed to git
+
+  challenges/                        ← shared data dir
+  challenges/registry.json           ← challenge data source
+
+  ctf-dashboard/templates/           ← Jinja2 template dir
+  ctf-dashboard/static/              ← CSS/JS static assets
+  vulnerable-agent/templates/
+  mcp-ecosystem-lab/email-agent/templates/
+
+MODIFY (13 files):
+  {all 12 Dockerfiles}               ← swap pip for uv (Pattern A or B)
+  docker-compose.yml                 ← registry mounts, healthchecks, depends_on
+  setup.sh                           ← uv prereq check + lock file generation
+Dockerfile Pattern Assignment
+Service	Pattern	Reason
+ctf-dashboard	A (multi-stage)	Gets templates + static, will grow
+vulnerable-agent	A (multi-stage)	Gets pypdf, templates, largest service
+email-agent	A (multi-stage)	Gets inbox templates, LLM-connected
+detection-engine	B (single-stage)	Flask only, no templates needed
+attacker-server	B (single-stage)	Flask only
+legitimate-packages	B (single-stage)	Flask only
+poisoned-registry	B (single-stage)	Flask only
+malicious-mcp	B (single-stage)	aiohttp script
+mcp-postmark-sim	B (single-stage)	aiohttp script
+bcc-interceptor	B (single-stage)	aiohttp script
+dependency-injector	B (single-stage)	aiohttp script
+rag-poisoning	B (single-stage)	One-shot seed script
+Ready to implement? The order is: pyproject.toml files → uv lock generation → Dockerfiles → docker-compose.yml → setup.sh → scaffold dirs. Want me to start?

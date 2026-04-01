@@ -1,0 +1,475 @@
+ASI04 Infrastructure: Restructured Plan
+Complete Change Inventory
+
+NEW FILES (per service):
+  {each service}/.dockerignore              ← 12 files, done first
+  {each service}/pyproject.toml             ← 12 files
+  {each service}/uv.lock                    ← 12 files (generated)
+
+NEW FILES (scaffold):
+  challenges/registry.json                  ← challenge data source
+  challenges/registry.schema.json           ← JSON Schema validation
+  ctf-dashboard/templates/base.html
+  ctf-dashboard/templates/index.html
+  ctf-dashboard/templates/objectives.html
+  ctf-dashboard/static/dashboard.css
+  vulnerable-agent/templates/               ← dir (future use)
+  mcp-ecosystem-lab/email-agent/templates/inbox.html
+
+MODIFY (14 files):
+  {all 12 Dockerfiles}                      ← uv + gunicorn + no curl
+  docker-compose.yml                        ← networks + volumes + profiles + limits
+  setup.sh                                  ← uv lock generation + validation
+Implementation Sequence (order matters)
+Step 1 — .dockerignore (do this first, no exceptions)
+One file per service directory. Without these, COPY . . sends .git, __pycache__, local .venv, and build artifacts into every image layer:
+
+
+# Each service gets this — identical content across all 12
+.git
+.gitignore
+__pycache__
+*.pyc
+*.pyo
+.venv
+.uv
+*.egg-info
+dist/
+.pytest_cache/
+*.log
+collected/
+ss/
+Step 2 — pyproject.toml for all 12 services
+Replace every RUN pip install x y z with a pyproject.toml. Four dep profiles:
+
+Profile 1 — Feature services (ctf-dashboard, vulnerable-agent, email-agent):
+
+
+# ctf-dashboard/pyproject.toml
+[project]
+name = "ctf-dashboard"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0.3",
+    "requests>=2.32.3",
+    "gunicorn>=22.0.0",       # ← graceful shutdown (Pattern A services only)
+]
+
+# vulnerable-agent/pyproject.toml
+[project]
+name = "vulnerable-agent"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0.3",
+    "requests>=2.32.3",
+    "chromadb>=0.5.0",
+    "pypdf>=4.3.1",
+    "gunicorn>=22.0.0",
+]
+
+# mcp-ecosystem-lab/email-agent/pyproject.toml
+[project]
+name = "email-agent"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "flask>=3.0.3",
+    "requests>=2.32.3",
+    "gunicorn>=22.0.0",
+]
+Profile 2 — Simple Flask (attacker-server, legitimate-packages, poisoned-registry, detection-engine):
+
+
+[project]
+name = "attacker-server"   # name differs per service
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["flask>=3.0.3", "requests>=2.32.3"]
+Profile 3 — aiohttp (malicious-mcp, mcp-postmark-sim, bcc-interceptor, dependency-injector):
+
+
+[project]
+name = "mcp-bcc-interceptor"   # name differs per service
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["aiohttp>=3.9.0", "httpx>=0.27.0"]
+Profile 4 — rag-poisoning (one-shot init script):
+
+
+[project]
+name = "rag-poisoning"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["chromadb>=0.5.0"]
+Step 3 — Generate uv.lock files locally
+
+# Run once per service on local machine before any Docker builds:
+for dir in ctf-dashboard vulnerable-agent attacker-server \
+           legitimate-packages poisoned-registry rag-poisoning \
+           malicious-mcp \
+           mcp-ecosystem-lab/email-agent \
+           mcp-ecosystem-lab/detection-engine \
+           mcp-ecosystem-lab/mcp-postmark-sim \
+           mcp-ecosystem-lab/bcc-interceptor \
+           mcp-ecosystem-lab/dependency-injector; do
+    echo "Locking $dir..."
+    (cd "$dir" && uv lock)
+done
+Lock files are committed to git. Docker builds use --frozen and never update them.
+
+Step 4 — Dockerfiles
+Pattern A — Multi-stage with gunicorn (3 feature services):
+
+
+# ── Stage 1: dependency builder ───────────────────────────────────────────────
+FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim AS builder
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy \
+    UV_CACHE_DIR=/root/.cache/uv        # ← named cache volume mounts here
+
+# Cached layer — only reruns when pyproject.toml/uv.lock changes
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+# Source layer — reruns on code changes only
+COPY . .
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+# ── Stage 2: slim runtime (no uv, no build cache) ──────────────────────────
+FROM python:3.11-slim
+WORKDIR /app
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app /app
+
+ENV PATH="/app/.venv/bin:$PATH"
+
+# gunicorn: graceful SIGTERM handling, worker management
+CMD ["gunicorn", "--bind", "0.0.0.0:3000", "--workers", "2",
+     "--timeout", "60", "--graceful-timeout", "10", "app:app"]
+(Port changes per service: 3000/ctf-dashboard, 5050/vulnerable-agent, 5080/email-agent)
+
+Pattern B — Single-stage (9 simpler services):
+
+
+FROM python:3.11-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /bin/uv
+WORKDIR /app
+
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
+
+# Cached layer
+COPY pyproject.toml uv.lock ./
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-project
+
+COPY . .
+
+# No healthcheck needs curl — Python stdlib handles it (see compose)
+CMD ["uv", "run", "python", "app.py"]
+--mount=type=cache is the key uv cache addition: BuildKit mounts the uv package cache across builds without it ending up in the image layer. No named volume needed in compose for this — it's a BuildKit build cache.
+
+Step 5 — challenges/registry.schema.json
+
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": ["version", "challenges"],
+  "properties": {
+    "version": { "type": "string" },
+    "challenges": {
+      "type": "object",
+      "patternProperties": {
+        "^ASI04-\\d{2}$": {
+          "type": "object",
+          "required": ["id","name","points","category","difficulty","difficulty_label","tags","flag","hints","objectives","group"],
+          "properties": {
+            "category": { "enum": ["Dependency Confusion","Tool Poisoning","RAG Poisoning","Credential Exfil","MCP Trust"] },
+            "difficulty": { "type": "integer", "minimum": 1, "maximum": 5 },
+            "group": { "enum": ["core","rwl"] },
+            "tags": { "type": "array", "items": { "type": "string", "pattern": "^#" } }
+          }
+        }
+      }
+    }
+  }
+}
+Startup validation added to ctf-dashboard/app.py:
+
+
+import jsonschema, json, sys
+
+def load_registry():
+    with open("/app/challenges/registry.json") as f:
+        registry = json.load(f)
+    with open("/app/challenges/registry.schema.json") as f:
+        schema = json.load(f)
+    try:
+        jsonschema.validate(registry, schema)
+    except jsonschema.ValidationError as e:
+        print(f"FATAL: registry.json invalid — {e.message}", file=sys.stderr)
+        sys.exit(1)
+    return registry
+jsonschema added to ctf-dashboard/pyproject.toml deps.
+
+Step 6 — docker-compose.yml full overhaul
+All changes together:
+
+
+# ── Networks (segmentation) ────────────────────────────────────────────────────
+networks:
+  frontend:     # player-facing: dashboard, vulnerable-agent, email-agent
+    driver: bridge
+  backend:      # agent-to-MCP: MCP servers, attacker, registries
+    driver: bridge
+  infra:        # internal only: ollama, chromadb, redis
+    driver: bridge
+
+# ── Named volumes ──────────────────────────────────────────────────────────────
+volumes:
+  ollama-data:
+  chroma-data:
+  redis-data:
+  ctf-logs:               # ← NEW: cross-service forensic log volume
+  agent-logs:             # ← NEW: vulnerable-agent logs
+  attacker-collected:     # ← NEW: replaces bind mount ./attacker-server/collected
+
+# ── Services ───────────────────────────────────────────────────────────────────
+services:
+
+  ollama:
+    # ... existing config ...
+    networks: [infra]
+    deploy:
+      resources:
+        limits:
+          memory: 4G          # ← prevents starving other containers
+          cpus: "2.0"
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:11434/api/tags')"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  chromadb:
+    networks: [infra]
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  redis:
+    networks: [infra]
+
+  attacker-server:
+    networks: [backend, frontend]   # reachable from both sides
+    volumes:
+      - attacker-collected:/app/collected   # ← named volume replaces bind mount
+      - ctf-logs:/app/logs
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8666/api/log')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 10s
+
+  malicious-mcp:
+    networks: [backend]             # not reachable from frontend
+    depends_on:
+      attacker-server:
+        condition: service_healthy
+
+  poisoned-registry:
+    networks: [backend]
+    depends_on:
+      attacker-server:
+        condition: service_healthy
+
+  fake-pypi:
+    networks: [backend]
+
+  vulnerable-agent:
+    networks: [frontend, backend, infra]   # needs all three
+    volumes:
+      - ./challenges/registry.json:/app/challenges/registry.json:ro
+      - ./challenges/registry.schema.json:/app/challenges/registry.schema.json:ro
+      - agent-logs:/app/logs
+    depends_on:
+      ollama:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+      redis:
+        condition: service_started
+      rag-poisoning:
+        condition: service_completed_successfully   # ← gate on seed job
+      attacker-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5050/health')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+
+  ctf-dashboard:
+    networks: [frontend]
+    volumes:
+      - ./challenges/registry.json:/app/challenges/registry.json:ro
+      - ./challenges/registry.schema.json:/app/challenges/registry.schema.json:ro
+      - ctf-logs:/app/logs:ro    # ← read-only view of cross-service logs
+    depends_on:
+      attacker-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:3000/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 10s
+
+  rag-poisoning:
+    networks: [infra]
+    depends_on:
+      chromadb:
+        condition: service_started
+    restart: "no"
+    # service_completed_successfully requires the container to exit 0
+    # seed.py already does this — no change needed
+
+  mcp-postmark-sim:
+    networks: [backend]
+    depends_on:
+      attacker-server:
+        condition: service_healthy
+
+  bcc-interceptor:
+    networks: [backend]
+    depends_on:
+      attacker-server:
+        condition: service_healthy
+
+  dependency-injector:
+    networks: [backend]
+    depends_on:
+      attacker-server:
+        condition: service_healthy
+
+  email-agent:
+    networks: [frontend, backend]   # player-facing + needs MCP servers
+    depends_on:
+      ollama:
+        condition: service_healthy
+      mcp-postmark-sim:
+        condition: service_started
+      bcc-interceptor:
+        condition: service_started
+      dependency-injector:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python3", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:5080/')"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    stop_grace_period: 10s
+
+  mcp-detection-engine:
+    networks: [frontend, backend]
+    depends_on:
+      ollama:
+        condition: service_healthy
+      attacker-server:
+        condition: service_healthy
+
+# ── Compose profiles ───────────────────────────────────────────────────────────
+# docker compose --profile core up        ← 5 core challenge services only
+# docker compose --profile full up        ← everything including MCP ecosystem
+# docker compose up                        ← same as --profile full
+Profile assignments (add profiles: to each service):
+
+Profile	Services
+core	ollama, chromadb, redis, attacker-server, malicious-mcp, poisoned-registry, fake-pypi, vulnerable-agent, ctf-dashboard, rag-poisoning
+full	everything above + email-agent, mcp-postmark-sim, bcc-interceptor, dependency-injector, mcp-detection-engine
+Step 7 — Network Topology (visual)
+
+┌─ frontend ──────────────────────────────────────┐
+│  ctf-dashboard (3000)                           │
+│  vulnerable-agent (5050) ◄──────────┐           │
+│  email-agent (5080) ◄────────────┐  │           │
+│  mcp-detection-engine (5070) ◄───┼──┤           │
+└──────────────────────────────────┼──┼───────────┘
+                                   │  │
+┌─ backend ─────────────────────────┼──┼───────────┐
+│  attacker-server (8666) ◄─────────┘  │           │
+│  malicious-mcp (8765) ──────────────►│           │
+│  poisoned-registry (8080) ──────────►│           │
+│  fake-pypi (8081)                    │           │
+│  mcp-postmark-sim (8770) ────────────┘           │
+│  bcc-interceptor (8771)                          │
+│  dependency-injector (8772)                      │
+└──────────────────────────────────────────────────┘
+                                   │
+┌─ infra ───────────────────────────┼───────────────┐
+│  ollama (11434) ◄─────────────────┘               │
+│  chromadb (8000)                                  │
+│  redis (6380)                                     │
+└───────────────────────────────────────────────────┘
+Step 8 — setup.sh updates
+
+# 1. Check uv
+if ! command -v uv &> /dev/null; then
+    echo "Installing uv..."
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+fi
+
+# 2. Generate lock files (safe to re-run; skips if lockfile current)
+echo "[*] Generating uv lock files..."
+for dir in ctf-dashboard vulnerable-agent attacker-server \
+           legitimate-packages poisoned-registry rag-poisoning malicious-mcp \
+           mcp-ecosystem-lab/{email-agent,detection-engine,mcp-postmark-sim,bcc-interceptor,dependency-injector}; do
+    (cd "$dir" && uv lock --quiet) && echo "  ✓ $dir"
+done
+
+# 3. Validate registry before building
+echo "[*] Validating challenge registry..."
+python3 -c "
+import json, jsonschema
+registry = json.load(open('challenges/registry.json'))
+schema = json.load(open('challenges/registry.schema.json'))
+jsonschema.validate(registry, schema)
+print('  ✓ registry.json valid')
+"
+
+# 4. Build (BuildKit required for --mount=type=cache)
+DOCKER_BUILDKIT=1 docker compose build
+
+# 5. Start and wait for healthy
+docker compose --profile full up -d --wait
+Summary: All 10 Hardening Gaps Addressed
+Gap	Solution	Where
+Log persistence	Named volumes ctf-logs, agent-logs, attacker-collected	docker-compose.yml
+Network segmentation	3 networks: frontend, backend, infra	docker-compose.yml
+Resource limits	mem_limit on ollama (4G), chromadb (1G), agent (1G)	docker-compose.yml
+curl in healthchecks	python3 -c urllib.request.urlopen(...) — zero extra packages	All Dockerfiles / compose
+depends_on chain	rag-poisoning → service_completed_successfully gates vulnerable-agent	docker-compose.yml
+Graceful shutdown	gunicorn in Pattern A services + stop_grace_period: 10s	Dockerfiles + compose
+.dockerignore missing	One per service, excludes .git __pycache__ .venv *.log	Step 1
+uv cache across builds	--mount=type=cache,target=/root/.cache/uv (BuildKit cache)	All Dockerfiles
+Registry validation	registry.schema.json + jsonschema check at startup + setup.sh preflight	Step 5
+No compose profiles	core + full profiles on all services	docker-compose.yml
+Ready to implement? Starting order: Step 1 (.dockerignore) → Step 2-3 (pyproject.toml + uv lock) → Step 4 (Dockerfiles) → Step 5 (schema) → Step 6 (compose) → Step 7 (setup.sh) → then feature phases.
