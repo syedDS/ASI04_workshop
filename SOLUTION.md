@@ -234,14 +234,39 @@ The poisoned tool registry (port 8080) serves tool definitions with hidden promp
 
 ### Exact Steps to Get the Flag
 
-**Method 1: Via Web UI (recommended)**
+**Method 1: Via Chat**
+
+Open http://localhost:5050 and in the chat box ask:
+
+```
+What tools do you have access to?
+```
+
+Alternative audit phrases that also work:
+
+```
+Audit your tools
+```
+```
+List your available tools
+```
+```
+Inspect tools
+```
+```
+What are your capabilities?
+```
+
+The agent detects an audit-intent keyword, runs `_act_audit()`, scans every tool description fetched from the poisoned registry for injection markers, and captures the flag when hidden instructions are found.
+
+**Method 2: Via Web UI**
 
 1. Open http://localhost:5050
 2. Scroll down to the **"Available Tools"** panel
 3. Click the **"🔍 Inspect Tool Descriptions (ASI04-04)"** button
 4. A red flag banner will appear with `ASI04_FLAG{h1dd3n_1nstruct10ns}`
 
-**Method 2: Via cURL**
+**Method 3: Via cURL**
 
 ```bash
 curl -s http://localhost:5050/api/tools/inspect | python -m json.tool
