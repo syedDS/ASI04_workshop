@@ -10,7 +10,7 @@ Challenges:
 from flask import Flask, send_file, jsonify, Response
 import os
 import io
-import tarfile
+import zipfile
 import base64
 import hashlib
 
@@ -159,62 +159,53 @@ def initialize():
     return AgentCore()
 '''
 
-def generate_setup_py(package_name):
-    """Generate setup.py for the package"""
-    pkg = PACKAGES[package_name]
-    
-    return f'''from setuptools import setup, find_packages
+def create_package_wheel(package_name):
+    """Create a wheel (.whl) for the malicious package.
 
-setup(
-    name="{package_name}",
-    version="{pkg['version']}",
-    description="{pkg['description']}",
-    author="Legitimate Developer",
-    author_email="dev@example.com",
-    packages=find_packages(),
-    install_requires=[
-        "requests>=2.0.0",
-    ],
-    python_requires=">=3.7",
-)
-'''
-
-def create_package_tarball(package_name):
-    """Create a tarball of the malicious package"""
+    Wheels are zip archives — pip extracts them directly with no build step,
+    so this bypasses the setuptools/sdist problem entirely.
+    """
     pkg = PACKAGES[package_name]
     pkg_dir = package_name.replace("-", "_")
-    
-    # Create in-memory tarball
-    tar_buffer = io.BytesIO()
-    
-    with tarfile.open(fileobj=tar_buffer, mode='w:gz') as tar:
-        # Add __init__.py
-        init_content = generate_malicious_init(package_name, pkg['payload'])
-        init_info = tarfile.TarInfo(name=f"{package_name}-{pkg['version']}/{pkg_dir}/__init__.py")
-        init_data = init_content.encode('utf-8')
-        init_info.size = len(init_data)
-        tar.addfile(init_info, io.BytesIO(init_data))
-        
-        # Add setup.py
-        setup_content = generate_setup_py(package_name)
-        setup_info = tarfile.TarInfo(name=f"{package_name}-{pkg['version']}/setup.py")
-        setup_data = setup_content.encode('utf-8')
-        setup_info.size = len(setup_data)
-        tar.addfile(setup_info, io.BytesIO(setup_data))
-        
-        # Add PKG-INFO
-        pkg_info = f"""Metadata-Version: 1.0
-Name: {package_name}
-Version: {pkg['version']}
-Summary: {pkg['description']}
-"""
-        pkg_info_tarinfo = tarfile.TarInfo(name=f"{package_name}-{pkg['version']}/PKG-INFO")
-        pkg_info_data = pkg_info.encode('utf-8')
-        pkg_info_tarinfo.size = len(pkg_info_data)
-        tar.addfile(pkg_info_tarinfo, io.BytesIO(pkg_info_data))
-    
-    tar_buffer.seek(0)
-    return tar_buffer.getvalue()
+    version = pkg["version"]
+
+    whl_buffer = io.BytesIO()
+    with zipfile.ZipFile(whl_buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        # Package source
+        init_content = generate_malicious_init(package_name, pkg["payload"])
+        zf.writestr(f"{pkg_dir}/__init__.py", init_content)
+
+        # dist-info/METADATA (PEP 566)
+        metadata = (
+            f"Metadata-Version: 2.1\n"
+            f"Name: {package_name}\n"
+            f"Version: {version}\n"
+            f"Summary: {pkg['description']}\n"
+            f"Author: Legitimate Developer\n"
+        )
+        zf.writestr(f"{pkg_dir}-{version}.dist-info/METADATA", metadata)
+
+        # dist-info/WHEEL (PEP 427)
+        wheel_meta = (
+            "Wheel-Version: 1.0\n"
+            "Generator: fake-pypi-ctf\n"
+            "Root-Is-Purelib: true\n"
+            "Tag: py3-none-any\n"
+        )
+        zf.writestr(f"{pkg_dir}-{version}.dist-info/WHEEL", wheel_meta)
+
+        # dist-info/RECORD (required by pip; empty is accepted)
+        zf.writestr(f"{pkg_dir}-{version}.dist-info/RECORD", "")
+
+    whl_buffer.seek(0)
+    return whl_buffer.getvalue()
+
+
+def wheel_filename(package_name):
+    """Return the canonical wheel filename for a package."""
+    pkg_dir = package_name.replace("-", "_")
+    version = PACKAGES[package_name]["version"]
+    return f"{pkg_dir}-{version}-py3-none-any.whl"
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -246,14 +237,11 @@ def package_index(package_name):
     """Package-specific index"""
     if package_name not in PACKAGES:
         return Response("Not Found", status=404)
-    
-    pkg = PACKAGES[package_name]
-    filename = f"{package_name}-{pkg['version']}.tar.gz"
-    
-    # Calculate hash for the tarball
-    tarball = create_package_tarball(package_name)
-    sha256_hash = hashlib.sha256(tarball).hexdigest()
-    
+
+    filename = wheel_filename(package_name)
+    whl = create_package_wheel(package_name)
+    sha256_hash = hashlib.sha256(whl).hexdigest()
+
     return Response(f"""<!DOCTYPE html>
 <html>
 <head><title>Links for {package_name}</title></head>
@@ -265,20 +253,18 @@ def package_index(package_name):
 
 @app.route('/packages/<filename>', methods=['GET'])
 def download_package(filename):
-    """Download package tarball"""
-    # Extract package name from filename
+    """Download package wheel"""
     for pkg_name in PACKAGES.keys():
-        if filename.startswith(pkg_name):
-            tarball = create_package_tarball(pkg_name)
-            
+        if filename == wheel_filename(pkg_name):
+            whl = create_package_wheel(pkg_name)
             return Response(
-                tarball,
-                mimetype='application/gzip',
+                whl,
+                mimetype='application/zip',
                 headers={
                     'Content-Disposition': f'attachment; filename={filename}'
                 }
             )
-    
+
     return Response("Not Found", status=404)
 
 @app.route('/pypi/<package_name>/json', methods=['GET'])
@@ -286,12 +272,12 @@ def package_json(package_name):
     """JSON API for package info"""
     if package_name not in PACKAGES:
         return jsonify({"error": "Not found"}), 404
-    
+
     pkg = PACKAGES[package_name]
-    filename = f"{package_name}-{pkg['version']}.tar.gz"
-    tarball = create_package_tarball(package_name)
-    sha256_hash = hashlib.sha256(tarball).hexdigest()
-    
+    filename = wheel_filename(package_name)
+    whl = create_package_wheel(package_name)
+    sha256_hash = hashlib.sha256(whl).hexdigest()
+
     return jsonify({
         "info": {
             "name": package_name,
