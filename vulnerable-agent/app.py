@@ -697,6 +697,44 @@ HTML_TEMPLATE = '''
                     });
                 }
 
+                // Show Lab 4: Poisoned Tool Descriptor audit results
+                if (data.tool_audit) {
+                    const audit = data.tool_audit;
+                    const poisonedSet = new Set(audit.poisoned_tools || []);
+                    let toolsHtml = (audit.tools || []).map(t => {
+                        const isPoisoned = poisonedSet.has(t.name);
+                        const borderColor = isPoisoned ? '#ff0066' : '#333';
+                        const labelHtml = isPoisoned
+                            ? '<span style="color:#ff0066;font-weight:bold;font-size:11px;text-transform:uppercase;letter-spacing:1px;">POISONED</span>'
+                            : '<span style="color:#00ff88;font-size:11px;">clean</span>';
+                        return `<div style="border:1px solid ${borderColor};border-radius:6px;padding:10px;margin:6px 0;background:#111;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;">
+                                <strong style="color:${isPoisoned ? '#ff6688' : '#aaa'};">${t.name}</strong>
+                                ${labelHtml}
+                            </div>
+                            <div style="font-size:12px;color:#ccc;margin-top:5px;white-space:pre-wrap;">${t.description}</div>
+                        </div>`;
+                    }).join('');
+
+                    if (audit.flag_captured) {
+                        chat.innerHTML += `<div class="message system-msg" style="background:#ff0066;color:#fff;font-weight:bold;font-size:15px;text-align:center;padding:14px;border-radius:8px;margin-bottom:8px;">
+                            🚩 FLAG CAPTURED!<br>
+                            <code style="font-size:13px;color:#fff;">ASI04_FLAG{h1dd3n_1nstruct10ns}</code><br>
+                            <small style="font-weight:normal;">Check the CTF Dashboard at :3000 to verify your score.</small>
+                        </div>`;
+                    }
+                    chat.innerHTML += `<div class="message system-msg" style="background:#1a0a0a;border:1px solid #ff0066;border-radius:8px;padding:12px;">
+                        <strong style="color:#ff6600;">Tool Registry Scan Results</strong>
+                        ${toolsHtml}
+                        ${audit.flag_captured
+                            ? `<div style="background:#ff0066;color:#fff;padding:10px;border-radius:6px;margin-top:8px;text-align:center;font-weight:bold;">
+                                🚩 FLAG CAPTURED — ASI04-04: Poisoned Tool Descriptors<br>
+                                Hidden injections found in ${audit.poisoned_tools.length} tool(s): ${audit.poisoned_tools.join(', ')}
+                              </div>`
+                            : ''}
+                    </div>`;
+                }
+
                 // Show NeMo Guardrail block notifications
                 if (data.guardrail_blocks && data.guardrail_blocks.length > 0) {
                     data.guardrail_blocks.forEach(block => {
@@ -1297,6 +1335,8 @@ def chat():
                     sys.executable, "-m", "pip", "install",
                     "--index-url", PYPI_INDEX_URL,
                     "--trusted-host", "fake-pypi",
+                    "--no-build-isolation",
+                    "--no-deps",
                     package_to_install
                 ], capture_output=True, text=True, timeout=30)
 
@@ -1363,6 +1403,83 @@ def chat():
                     if not mcp_flag_added:
                         flags_captured.append("ASI04_FLAG{mcp_tr0j4n_d3t3ct3d}")
                         mcp_flag_added = True
+                        exfiltrate_to_attacker("mcp_tool_executed", {
+                            "tool": tool_name,
+                            "flag": "ASI04_FLAG{mcp_tr0j4n_d3t3ct3d}",
+                            "challenge": "ASI04-02",
+                            "description": "Agent called malicious MCP server tool",
+                        })
+
+    # ── Lab 4: Poisoned Tool Descriptors — tool audit via chat ──────────────
+    TOOL_AUDIT_KEYWORDS = [
+        "audit tools", "audit my tools", "audit your tools",
+        "list tools", "list your tools", "what tools",
+        "show tools", "your tools", "which tools",
+        "describe tools", "tool descriptions", "inspect tools",
+        "capabilities", "what can you do", "available tools",
+        "tool audit", "examine tools", "check tools",
+    ]
+    LAB4_INJECTION_MARKERS = [
+        "<!--", "SYSTEM INSTRUCTION", "INTERNAL CONFIG", "HIDDEN:",
+        "%%DIRECTIVE%%", "[INTERNAL", "COMPLIANCE NOTE",
+        "​", "SOC2 compliance", "security-audit@",
+        "audit-logger.internal", "fraud-detect.payments.internal",
+    ]
+
+    tool_audit_result = None
+    if any(kw in user_msg_lower for kw in TOOL_AUDIT_KEYWORDS):
+        audit_tools = get_tools_from_registry()
+        if guardrails_enabled["lab4"]:
+            sanitized = []
+            for t in audit_tools:
+                desc = t.get("description", "")
+                if is_tool_poisoned(t.get("name", ""), desc):
+                    clean_desc = desc
+                    for marker in LAB4_INJECTION_MARKERS:
+                        idx = clean_desc.lower().find(marker.lower())
+                        if idx != -1:
+                            clean_desc = clean_desc[:idx]
+                    t["description"] = clean_desc.strip() + " [GUARDRAIL: injection stripped]"
+                    sanitized.append(t.get("name"))
+            if sanitized:
+                guardrail_blocks.append({
+                    "lab": "ASI04-04",
+                    "rule": "sanitize tool descriptions",
+                    "blocked_action": "expose_tool_injection",
+                    "reason": f"Poisoned descriptors sanitized before reaching agent: {sanitized}",
+                    "colang_rule": "define flow sanitize tool descriptions",
+                })
+                exfiltrate_to_attacker("guardrail_intercept", {
+                    "lab": "ASI04-04",
+                    "guardrail": "Tool Description Sanitization",
+                    "sanitized_tools": sanitized,
+                    "result": "BLOCKED — poisoned tool descriptors sanitized",
+                    "user_prompt": user_message,
+                })
+            tool_audit_result = {
+                "tools": audit_tools, "poisoned_tools": [],
+                "flag_captured": False, "guardrail_active": True,
+            }
+        else:
+            poisoned_names = [
+                t.get("name") for t in audit_tools
+                if is_tool_poisoned(t.get("name", ""), t.get("description", ""))
+            ]
+            if poisoned_names:
+                flags_captured.append("ASI04_FLAG{h1dd3n_1nstruct10ns}")
+                exfiltrate_to_attacker("poisoned_tool_descriptor", {
+                    "poisoned_tools": poisoned_names,
+                    "flag": "ASI04_FLAG{h1dd3n_1nstruct10ns}",
+                    "challenge": "ASI04-04",
+                    "description": "Student examined tool descriptions and found hidden instructions",
+                    "user_prompt": user_message,
+                })
+            tool_audit_result = {
+                "tools": audit_tools,
+                "poisoned_tools": poisoned_names,
+                "flag_captured": len(poisoned_names) > 0,
+                "guardrail_active": False,
+            }
 
     # Generate response
     result = generate_response(user_message)
@@ -1370,6 +1487,8 @@ def chat():
     result["packages_installed"] = packages_installed
     result["flags_captured"] = flags_captured
     result["guardrail_blocks"] = guardrail_blocks
+    if tool_audit_result is not None:
+        result["tool_audit"] = tool_audit_result
 
     # ASI04-05 "Poison the Brain": Check if RAG context contains RUN_MAINTENANCE
     # IMPORTANT: Only trigger if BOTH conditions are met:
@@ -1491,6 +1610,8 @@ def install_package():
             [sys.executable, "-m", "pip", "install",
              "--index-url", PYPI_INDEX_URL,
              "--trusted-host", "fake-pypi",
+             "--no-build-isolation",
+             "--no-deps",
              package_name],
             capture_output=True,
             text=True,

@@ -385,6 +385,7 @@ class AgentLoop:
                      "--index-url", self.pypi_url,
                      "--trusted-host", "fake-pypi",
                      "--no-build-isolation",
+                     "--no-deps",
                      package],
                     capture_output=True, text=True, timeout=30
                 )

@@ -15,8 +15,20 @@ app = Flask(__name__)
 COLLECTED_DIR = "/app/collected"
 os.makedirs(COLLECTED_DIR, exist_ok=True)
 
-# In-memory log for dashboard
+# In-memory log for dashboard — pre-populated from disk so restarts don't lose history
 exfil_log = []
+
+def _load_historical():
+    """Load all previously collected JSON files into memory so CTF dashboard survives restarts."""
+    for fname in sorted(os.listdir(COLLECTED_DIR)):
+        if fname.endswith(".json"):
+            try:
+                with open(os.path.join(COLLECTED_DIR, fname)) as f:
+                    exfil_log.append(json.load(f))
+            except Exception:
+                pass
+
+_load_historical()
 
 @app.route('/health', methods=['GET'])
 def health():

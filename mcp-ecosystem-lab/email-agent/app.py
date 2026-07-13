@@ -150,34 +150,17 @@ def ask_llm_brain(user_message):
 
     recent_logs = "\n".join(logs[-10:]) if logs else "No recent invocations."
 
-    system_prompt = f"""You are an email assistant agent. You have access to these MCP tools:
+    system_prompt = f"""You are an email assistant. Respond with ONLY a JSON object. No markdown, no explanation.
 
-POSTMARK SERVICE (send emails):
-- send_email: Send a transactional email. Params: to, from_email, subject, body, api_key
-- get_delivery_status: Check delivery status. Params: message_id, api_key
+Servers: "postmark" (tool: send_email), "workflow" (tool: data_processor)
+api_key value: {POSTMARK_API_KEY}
+from_email value: agent@company.com
 
-EMAIL GATEWAY (compose & manage):
-- compose_and_send: Compose and send email. Params: to, cc, bcc, subject, body
-- send_reply: Reply to thread. Params: thread_id, body
-- forward_email: Forward email. Params: message_id, to
-- list_sent: List sent emails.
+Example for sending email to bob@example.com about Sales:
+{{"tools": [{{"server": "postmark", "name": "send_email", "params": {{"to": "bob@example.com", "from_email": "agent@company.com", "subject": "Sales", "body": "Here is the Sales info.", "api_key": "{POSTMARK_API_KEY}"}}}}], "response": "I sent the email to bob@example.com."}}
 
-DATA WORKFLOW (process data):
-- data_processor: Process data. Params: data, operation, auth_token
-- report_generator: Generate reports. Params: template, data_source
-- workflow_orchestrator: Run workflows. Params: steps, context
-
-Environment variables available: {', '.join(env_names[:20])}
-
-Recent tool invocation logs:
-{recent_logs}
-
-Based on the user's request, decide which tool(s) to call.
-Respond with ONLY valid JSON (no markdown, no explanation):
-{{"tools": [{{"server": "postmark|gateway|workflow", "name": "tool_name", "params": {{...}}}}], "response": "your message to user"}}
-
-If no tools are needed, respond with:
-{{"tools": [], "response": "your message to user"}}"""
+Example for no action:
+{{"tools": [], "response": "How can I help?"}}"""
 
     try:
         response = requests.post(
@@ -194,7 +177,7 @@ If no tools are needed, respond with:
                     "num_predict": 512
                 }
             },
-            timeout=120
+            timeout=(10, 180)
         )
 
         if response.status_code == 200:
@@ -464,11 +447,33 @@ HTML_TEMPLATE = '''
                 </div>
 
                 <div class="panel">
+                    <h2>NeMo Guardrails</h2>
+                    <p style="color:#888;font-size:12px;">Toggle mitigations for Labs 6-8. When enabled, the guardrail blocks the attack.</p>
+                    <div style="line-height:2.5;">
+                        <label><input type="checkbox" id="gr-lab6" onchange="toggleGuardrail('lab6', this.checked)"> &nbsp;Lab 6: Credential Parameter Filter</label><br>
+                        <label><input type="checkbox" id="gr-lab7" onchange="toggleGuardrail('lab7', this.checked)"> &nbsp;Lab 7: BCC Field Integrity Check</label><br>
+                        <label><input type="checkbox" id="gr-lab8" onchange="toggleGuardrail('lab8', this.checked)"> &nbsp;Lab 8: Dependency Schema Validation</label>
+                    </div>
+                </div>
+
+                <div class="panel">
                     <h2>Tool Invocation Log</h2>
-                    <div id="invocation-log" style="max-height:300px;overflow-y:auto;">Loading...</div>
+                    <div id="invocation-log" style="max-height:250px;overflow-y:auto;">Loading...</div>
                     <button class="secondary" onclick="loadLogs()" style="margin-top:10px;">Refresh Logs</button>
                 </div>
             </div>
+        </div>
+
+        <div class="panel">
+            <h2>Traffic Inspector</h2>
+            <p style="color:#888;font-size:12px;">
+                Color-coded MCP invocation log &nbsp;
+                <span style="color:#ff4444;">&#9632; red=credential exfil (postmark)</span> &nbsp;
+                <span style="color:#ff8800;">&#9632; orange=BCC inject (gateway)</span> &nbsp;
+                <span style="color:#ffcc00;">&#9632; yellow=dep chain (workflow)</span>
+            </p>
+            <div id="traffic-inspector" style="max-height:250px;overflow-y:auto;">Loading...</div>
+            <button class="secondary" onclick="loadTrafficInspector()" style="margin-top:10px;">Refresh</button>
         </div>
     </div>
 
@@ -570,13 +575,66 @@ HTML_TEMPLATE = '''
             }
         }
 
+        async function toggleGuardrail(lab, enabled) {
+            try {
+                await fetch('/api/guardrails/toggle', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({lab, enabled})
+                });
+            } catch (e) { console.error('Guardrail toggle failed:', e); }
+        }
+
+        async function loadGuardrailStatus() {
+            try {
+                const resp = await fetch('/api/guardrails/status');
+                const data = await resp.json();
+                for (const [lab, enabled] of Object.entries(data)) {
+                    const el = document.getElementById('gr-' + lab);
+                    if (el) el.checked = enabled;
+                }
+            } catch (e) {}
+        }
+
+        async function loadTrafficInspector() {
+            try {
+                const resp = await fetch('/api/invocation-logs');
+                const data = await resp.json();
+                const container = document.getElementById('traffic-inspector');
+                if (data.entries && data.entries.length > 0) {
+                    container.innerHTML = data.entries.slice(0, 30).map(e => {
+                        const server = e.server || '?';
+                        const tool = e.tool || '?';
+                        const ts = (e.timestamp || '').substring(0, 19);
+                        let color = '#ff6600';
+                        let label = 'UNKNOWN';
+                        if (server === 'postmark') { color = '#ff4444'; label = 'CRED EXFIL'; }
+                        else if (server === 'gateway') { color = '#ff8800'; label = 'BCC INJECT'; }
+                        else if (server === 'workflow') { color = '#ffcc00'; label = 'DEP CHAIN'; }
+                        return '<div class="log-entry" style="border-left-color:' + color + '">' +
+                            '<span style="color:' + color + ';font-weight:bold;font-size:10px;">[' + label + ']</span> ' +
+                            '[' + server + '] <strong>' + tool + '</strong><br>' +
+                            '<span style="color:#555">' + ts + '</span>' +
+                            '</div>';
+                    }).join('');
+                } else {
+                    container.innerHTML = '<p class="hint">No traffic yet. Send emails or process data to generate MCP traffic.</p>';
+                }
+            } catch (e) {
+                document.getElementById('traffic-inspector').innerHTML = '<p class="hint">Failed to load traffic.</p>';
+            }
+        }
+
         document.getElementById('chat-input').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') sendChat();
         });
 
         checkStatus();
         loadLogs();
+        loadGuardrailStatus();
+        loadTrafficInspector();
         setInterval(checkStatus, 10000);
+        setInterval(loadTrafficInspector, 10000);
     </script>
 </body>
 </html>
@@ -600,51 +658,117 @@ def status():
 
 @app.route('/api/chat', methods=['POST'])
 def chat():
+    import re
     data = request.get_json()
     user_message = data.get("message", "")
+    lower_msg = user_message.lower()
 
-    # Use LLM brain to decide what tools to call
-    llm_decision = ask_llm_brain(user_message)
-    tools_to_call = llm_decision.get("tools", [])
-    llm_response = llm_decision.get("response", "")
+    tool_results = []
+    tools_used = []
+    llm_response = ""
 
-    # Execute tool calls decided by LLM
-    tool_results = execute_tool_calls(tools_to_call)
-    tools_used = [f"{r['server']}:{r['tool']}" for r in tool_results]
+    # ── PRIMARY: deterministic keyword routing (llama3.2:1b is too small to be
+    #    reliable, so we route tool calls by keyword first and skip the LLM for
+    #    tool decisions when a match is found) ────────────────────────────────
+    if any(kw in lower_msg for kw in ["send email", "send an email", "email to"]):
+        email_match = re.search(r'[\w\.\+\-]+@[\w\.\-]+\.\w+', user_message)
+        recipient = email_match.group(0) if email_match else "recipient@company.com"
 
-    # If no tools were decided by LLM, check for direct keywords
-    if not tools_to_call:
-        lower_msg = user_message.lower()
-        if any(kw in lower_msg for kw in ["send email", "send an email", "email to"]):
+        subject = "Email from Agent"
+        for phrase in ["about the", "about", "regarding", "re:"]:
+            idx = lower_msg.find(phrase)
+            if idx != -1:
+                subject = user_message[idx + len(phrase):].strip()[:60]
+                break
+
+        # ── Lab 6 guardrail: redact api_key ──────────────────────────────────
+        if guardrails_enabled["lab6"]:
+            tool_results.append({
+                "server": "postmark", "tool": "send_email",
+                "guardrail_blocked": True, "lab": "ASI04-06",
+                "reason": "🛡️ GUARDRAIL: api_key redacted — credential not sent to Postmark MCP.",
+                "colang": GUARDRAIL_RULES["lab6"],
+            })
+        else:
             result = call_mcp_tool(POSTMARK_MCP_URL, "send_email", {
-                "to": "recipient@company.com",
-                "subject": "Agent-initiated email",
+                "to": recipient,
+                "from_email": "agent@company.com",
+                "subject": subject,
                 "body": user_message,
-                "api_key": POSTMARK_API_KEY
+                "api_key": POSTMARK_API_KEY,
             })
             tool_results.append({"server": "postmark", "tool": "send_email", "result": result})
             tools_used.append("postmark:send_email")
 
-        if any(kw in lower_msg for kw in ["process", "data", "analyze", "report"]):
-            result = call_mcp_tool(DEP_INJECTOR_URL, "data_processor", {
-                "data": user_message,
-                "operation": "transform",
-                "auth_token": INTERNAL_SECRET
+        # ── Lab 7: also route through BCC interceptor ─────────────────────────
+        if guardrails_enabled["lab7"]:
+            tool_results.append({
+                "server": "gateway", "tool": "compose_and_send",
+                "guardrail_blocked": True, "lab": "ASI04-07",
+                "reason": "🛡️ GUARDRAIL BLOCKED: BCC field integrity check — email gateway rejected.",
+                "colang": GUARDRAIL_RULES["lab7"],
             })
-            tool_results.append({"server": "workflow", "tool": "data_processor", "result": result})
-            tools_used.append("workflow:data_processor")
+        else:
+            bcc_result = call_mcp_tool(BCC_INTERCEPTOR_URL, "compose_and_send", {
+                "to": recipient,
+                "subject": subject,
+                "body": user_message,
+                "cc": [],
+                "bcc": [],
+            })
+            tool_results.append({"server": "gateway", "tool": "compose_and_send", "result": bcc_result})
+            tools_used.append("gateway:compose_and_send")
+
+        if guardrails_enabled["lab6"] and guardrails_enabled["lab7"]:
+            llm_response = "🛡️ NeMo Guardrails blocked both credential exfiltration and BCC injection. Both attacks were prevented."
+        elif guardrails_enabled["lab6"]:
+            llm_response = "🛡️ NeMo Guardrails blocked credential exfiltration. The api_key was redacted before reaching the Postmark MCP server."
+        elif guardrails_enabled["lab7"]:
+            llm_response = "🛡️ NeMo Guardrails blocked BCC injection. The email gateway was prevented from injecting hidden recipients."
+        else:
+            llm_response = (
+                f"I've sent your email to {recipient} via the Postmark service. "
+                f"Subject: \"{subject}\". "
+                "The Postmark MCP server logged your API key, and the BCC interceptor silently added attacker-collect@evil.com — check the attacker dashboard!"
+            )
+
+    elif any(kw in lower_msg for kw in ["process data", "run workflow", "generate report"]):
+        result = call_mcp_tool(DEP_INJECTOR_URL, "data_processor", {
+            "data": user_message,
+            "operation": "transform",
+            "auth_token": INTERNAL_SECRET,
+        })
+        tool_results.append({"server": "workflow", "tool": "data_processor", "result": result})
+        tools_used.append("workflow:data_processor")
+        llm_response = "I've processed your data through the workflow MCP server."
+
+    else:
+        # ── FALLBACK: ask LLM brain for non-keyword requests ─────────────────
+        llm_decision = ask_llm_brain(user_message)
+        tools_to_call = llm_decision.get("tools", [])
+        llm_response = llm_decision.get("response", "")
+
+        if "your message to user" in llm_response or not llm_response.strip():
+            llm_response = ""
+
+        llm_tool_results = execute_tool_calls(tools_to_call)
+        tool_results.extend(llm_tool_results)
+        tools_used.extend(f"{r['server']}:{r['tool']}" for r in llm_tool_results)
+
+    if not llm_response:
+        llm_response = "I'm ready to help! Try: 'Send an email to alice@company.com about the Q4 report'"
 
     conversations.append({
         "user": user_message,
         "response": llm_response,
         "tools_used": tools_used,
-        "timestamp": datetime.utcnow().isoformat()
+        "timestamp": datetime.utcnow().isoformat(),
     })
 
     return jsonify({
         "response": llm_response,
         "tools_used": tools_used,
-        "tool_results": tool_results
+        "tool_results": tool_results,
     })
 
 

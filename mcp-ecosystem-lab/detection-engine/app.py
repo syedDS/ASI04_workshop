@@ -20,12 +20,27 @@ POSTMARK_MCP_URL = os.getenv("POSTMARK_MCP_URL", "http://mcp-postmark-sim:8770")
 BCC_INTERCEPTOR_URL = os.getenv("BCC_INTERCEPTOR_URL", "http://bcc-interceptor:8771")
 DEP_INJECTOR_URL = os.getenv("DEP_INJECTOR_URL", "http://dependency-injector:8772")
 
-# Track detections
-detections = {
-    "credential_harvest": False,
-    "bcc_injection": False,
-    "dep_chain": False
-}
+DETECTIONS_FILE = "/tmp/asi04_detections.json"
+
+
+def _load_detections():
+    try:
+        with open(DETECTIONS_FILE) as f:
+            return json.load(f)
+    except Exception:
+        return {"credential_harvest": False, "bcc_injection": False, "dep_chain": False}
+
+
+def _save_detections():
+    try:
+        with open(DETECTIONS_FILE, "w") as f:
+            json.dump(detections, f)
+    except Exception:
+        pass
+
+
+# Track detections — persisted to /tmp so state survives Flask restarts within the same container
+detections = _load_detections()
 
 DETECTION_SIGNATURES = {
     "credential_harvest": {
@@ -344,12 +359,16 @@ HTML_TEMPLATE = '''
                 const data = await resp.json();
                 const container = document.getElementById('traffic-log');
                 if (data.entries && data.entries.length > 0) {
-                    container.innerHTML = data.entries.slice(-30).reverse().map(e => {
+                    container.innerHTML = data.entries.slice(0, 30).map(e => {
                         const src = e.server || e.source || '?';
                         const tool = e.tool || e.attack_type || '?';
                         const ep = e.endpoint || '';
-                        const ts = e.timestamp || '';
-                        return '<div class="log-entry">[' + src + '] <strong>' + tool + '</strong> ' + ep + '<br><span style="color:#555">' + ts + '</span></div>';
+                        const ts = (e.timestamp || '').substring(0, 19);
+                        let color = '#ff6600';
+                        if (src === 'postmark' || (e.attack_type || '').includes('credential')) color = '#ff4444';
+                        else if (src === 'gateway' || (e.attack_type || '').includes('bcc')) color = '#ff8800';
+                        else if (src === 'workflow' || (e.attack_type || '').includes('dep')) color = '#ffcc00';
+                        return '<div class="log-entry" style="border-left-color:' + color + '">[' + src + '] <strong>' + tool + '</strong> ' + ep + '<br><span style="color:#555">' + ts + '</span></div>';
                     }).join('');
                 } else {
                     container.innerHTML = '<p style="color:#666;">No traffic yet. Use the Email Agent to generate MCP traffic.</p>';
@@ -549,6 +568,7 @@ def detect_credential_harvest():
     data = request.get_json()
     if data.get("anomaly") == "credential_exfil" and data.get("source") == "postmark_mcp":
         detections["credential_harvest"] = True
+        _save_detections()
         return _check_all_detected("Credential harvesting pattern correctly identified!")
     return jsonify({"detected": False, "message": "Incorrect detection. Check the anomaly type and source MCP server name."})
 
@@ -558,6 +578,7 @@ def detect_bcc_inject():
     data = request.get_json()
     if data.get("anomaly") == "bcc_injection" and data.get("injected_address") == "attacker-collect@evil.com":
         detections["bcc_injection"] = True
+        _save_detections()
         return _check_all_detected("BCC injection pattern correctly identified!")
     return jsonify({"detected": False, "message": "Incorrect detection. Check the anomaly type and the injected email address."})
 
@@ -569,6 +590,7 @@ def detect_dep_chain():
     submitted_deps = set(data.get("malicious_deps", []))
     if data.get("anomaly") == "dependency_chain" and required_deps.issubset(submitted_deps):
         detections["dep_chain"] = True
+        _save_detections()
         return _check_all_detected("Dependency injection chain correctly identified!")
     return jsonify({"detected": False, "message": "Incorrect detection. Check the anomaly type and list all three malicious dependencies."})
 
