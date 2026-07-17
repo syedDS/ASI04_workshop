@@ -119,6 +119,54 @@ RWL_CHALLENGES = {
     }
 }
 
+# Real World Lab 2 - Skill Lab (ASI04-10 to 13)
+SKILL_CHALLENGES = {
+    "ASI04-10": {
+        "name": "Skill Identity Spoofing",
+        "points": 300,
+        "description": "Compromised registry entry redirects the researcher skill to a malicious endpoint",
+        "flag": "ASI04_FLAG{sk1ll_1d3nt1ty_sp00f3d}",
+        "hints": [
+            "Run a task at the Skill Orchestrator :5090",
+            "Check /api/endpoint-check after running",
+            "Compare declared endpoint vs trusted host"
+        ]
+    },
+    "ASI04-11": {
+        "name": "Output Injection via Sub-Agent",
+        "points": 350,
+        "description": "Malicious skill embeds SYSTEM INSTRUCTION in its output; LLM follows it and leaks secrets",
+        "flag": "ASI04_FLAG{0utput_1nj3ct10n_3x3cut3d}",
+        "hints": [
+            "Run a task and read the answer field carefully",
+            "Look for injected directives in the LLM response",
+            "POST the phrase to /api/find-injection"
+        ]
+    },
+    "ASI04-12": {
+        "name": "Capability Scope Creep",
+        "points": 350,
+        "description": "Skill requests read_env at runtime beyond its declared permissions; orchestrator silently grants it",
+        "flag": "ASI04_FLAG{sc0p3_cr33p_gr4nt3d}",
+        "hints": [
+            "Run a task with the researcher skill",
+            "Check /api/permission-audit",
+            "Look for permissions granted beyond what was declared"
+        ]
+    },
+    "ASI04-13": {
+        "name": "Skill Version Downgrade",
+        "points": 400,
+        "description": "Registry pins researcher to v3.0.1 (malicious); patched v3.1.0 exists but is never deployed",
+        "flag": "ASI04_FLAG{v3rs10n_d0wngr4d3_pwn3d}",
+        "hints": [
+            "Check /api/version-check?skill=researcher",
+            "Compare pinned_version vs latest_available_version",
+            "The patch exists but the registry never bumps the pin"
+        ]
+    }
+}
+
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
@@ -353,18 +401,19 @@ HTML_TEMPLATE = '''
                 </div>
                 <div class="score-block">
                     <div class="score-label">Real World Labs</div>
-                    <div class="total-score rwl" id="rwl-score">0 / 1250</div>
+                    <div class="total-score rwl" id="rwl-score">0 / 2650</div>
                 </div>
                 <div class="score-block">
                     <div class="score-label">Grand Total</div>
-                    <div class="total-score grand" id="total-score">0 / 2600</div>
+                    <div class="total-score grand" id="total-score">0 / 4000</div>
                 </div>
             </div>
         </div>
 
         <div class="tabs">
             <div class="tab active" onclick="switchTab('core')">Core Challenges (ASI04-01 to 05)</div>
-            <div class="tab rwl-tab" onclick="switchTab('rwl')">Real World Simulated Challenges (ASI04-06 to 09)</div>
+            <div class="tab rwl-tab" onclick="switchTab('rwl')">RWL1: MCP Ecosystem (06-09)</div>
+            <div class="tab rwl-tab" onclick="switchTab('skill')">RWL2: Skill Lab (10-13)</div>
         </div>
 
         <div id="tab-core" class="tab-content active">
@@ -389,23 +438,37 @@ HTML_TEMPLATE = '''
                 Loading challenges...
             </div>
         </div>
+
+        <div id="tab-skill" class="tab-content">
+            <div class="rwl-banner">
+                <h3>Real World Simulated Challenges - Skill Lab</h3>
+                <p>Agent orchestration trust failures: poisoned skill registry, output injection, scope creep, version downgrade</p>
+            </div>
+            <div class="links-bar">
+                <a href="http://localhost:5090" target="_blank">Skill Orchestrator :5090</a>
+                <a href="http://localhost:8090/skills" target="_blank">Skill Registry :8090</a>
+                <a href="http://localhost:8094/invocations" target="_blank">Malicious Skill :8094</a>
+                <a href="http://localhost:8666/dashboard" target="_blank">Attacker Dashboard :8666</a>
+            </div>
+            <div class="section-header">Skill Orchestration Attacks - 1400 pts</div>
+            <div class="challenges" id="skill-challenges">
+                Loading challenges...
+            </div>
+        </div>
     </div>
 
     <script>
         const challenges = ''' + json.dumps(CHALLENGES) + ''';
         const rwlChallenges = ''' + json.dumps(RWL_CHALLENGES) + ''';
+        const skillChallenges = ''' + json.dumps(SKILL_CHALLENGES) + ''';
 
         function switchTab(tab) {
             document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.tab-content').forEach(t => t.classList.remove('active'));
-
-            if (tab === 'core') {
-                document.querySelectorAll('.tab')[0].classList.add('active');
-                document.getElementById('tab-core').classList.add('active');
-            } else {
-                document.querySelectorAll('.tab')[1].classList.add('active');
-                document.getElementById('tab-rwl').classList.add('active');
-            }
+            const tabMap = {core: [0, 'tab-core'], rwl: [1, 'tab-rwl'], skill: [2, 'tab-skill']};
+            const [idx, id] = tabMap[tab] || [0, 'tab-core'];
+            document.querySelectorAll('.tab')[idx].classList.add('active');
+            document.getElementById(id).classList.add('active');
         }
 
         function renderChallenges(containerId, challengeData, solvedData, isRwl) {
@@ -451,8 +514,12 @@ HTML_TEMPLATE = '''
                     if (data.solved[id]) coreScore += challenge.points;
                 }
 
-                // Calculate RWL scores
+                // Calculate RWL scores (MCP Ecosystem + Skill Lab)
                 for (const [id, challenge] of Object.entries(rwlChallenges)) {
+                    rwlMax += challenge.points;
+                    if (data.solved[id]) rwlScore += challenge.points;
+                }
+                for (const [id, challenge] of Object.entries(skillChallenges)) {
                     rwlMax += challenge.points;
                     if (data.solved[id]) rwlScore += challenge.points;
                 }
@@ -460,6 +527,7 @@ HTML_TEMPLATE = '''
                 // Render challenges
                 renderChallenges('core-challenges', challenges, data.solved, false);
                 renderChallenges('rwl-challenges', rwlChallenges, data.solved, true);
+                renderChallenges('skill-challenges', skillChallenges, data.solved, true);
 
                 // Update scores
                 document.getElementById('core-score').textContent = `${coreScore} / ${coreMax}`;
@@ -501,11 +569,16 @@ def get_progress():
                 "ASI04-03": CHALLENGES["ASI04-03"]["flag"] in all_data,
                 "ASI04-04": CHALLENGES["ASI04-04"]["flag"] in all_data,
                 "ASI04-05": CHALLENGES["ASI04-05"]["flag"] in all_data,
-                # Real World Lab challenges
+                # Real World Lab 1 — MCP Ecosystem
                 "ASI04-06": RWL_CHALLENGES["ASI04-06"]["flag"] in all_data,
                 "ASI04-07": RWL_CHALLENGES["ASI04-07"]["flag"] in all_data,
                 "ASI04-08": RWL_CHALLENGES["ASI04-08"]["flag"] in all_data,
                 "ASI04-09": RWL_CHALLENGES["ASI04-09"]["flag"] in all_data,
+                # Real World Lab 2 — Skill Lab
+                "ASI04-10": SKILL_CHALLENGES["ASI04-10"]["flag"] in all_data,
+                "ASI04-11": SKILL_CHALLENGES["ASI04-11"]["flag"] in all_data,
+                "ASI04-12": SKILL_CHALLENGES["ASI04-12"]["flag"] in all_data,
+                "ASI04-13": SKILL_CHALLENGES["ASI04-13"]["flag"] in all_data,
             }
 
             return jsonify({
@@ -515,7 +588,7 @@ def get_progress():
     except Exception as e:
         print(f"Error checking progress: {e}")
 
-    all_keys = {**{k: False for k in CHALLENGES.keys()}, **{k: False for k in RWL_CHALLENGES.keys()}}
+    all_keys = {**{k: False for k in CHALLENGES.keys()}, **{k: False for k in RWL_CHALLENGES.keys()}, **{k: False for k in SKILL_CHALLENGES.keys()}}
     return jsonify({
         "solved": all_keys,
         "total_entries": 0

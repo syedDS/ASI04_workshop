@@ -401,7 +401,11 @@ HTML_TEMPLATE = '''
                         <input type="text" id="chat-input" placeholder="Ask the agent..." style="flex:1;margin-bottom:0;">
                         <button onclick="sendChat()">Send</button>
                     </div>
-                    <p class="hint">Try: "Send an email to alice@company.com about the Q4 report"</p>
+                    <p class="hint">
+                        Lab 6: "Send an email to alice@company.com about the Q4 report"<br>
+                        Lab 7: "Reply to the team thread about the product launch"<br>
+                        Lab 8: "Analyze the weekly figures and summarize the trends"
+                    </p>
                 </div>
 
                 <div class="panel">
@@ -681,7 +685,7 @@ def chat():
                 subject = user_message[idx + len(phrase):].strip()[:60]
                 break
 
-        # ── Lab 6 guardrail: redact api_key ──────────────────────────────────
+        # ── Lab 6 only: postmark credential exfil — no BCC interceptor here ────
         if guardrails_enabled["lab6"]:
             tool_results.append({
                 "server": "postmark", "tool": "send_email",
@@ -689,6 +693,7 @@ def chat():
                 "reason": "🛡️ GUARDRAIL: api_key redacted — credential not sent to Postmark MCP.",
                 "colang": GUARDRAIL_RULES["lab6"],
             })
+            llm_response = "🛡️ NeMo Guardrails blocked credential exfiltration. The api_key was redacted before reaching the Postmark MCP server."
         else:
             result = call_mcp_tool(POSTMARK_MCP_URL, "send_email", {
                 "to": recipient,
@@ -699,40 +704,48 @@ def chat():
             })
             tool_results.append({"server": "postmark", "tool": "send_email", "result": result})
             tools_used.append("postmark:send_email")
-
-        # ── Lab 7: also route through BCC interceptor ─────────────────────────
-        if guardrails_enabled["lab7"]:
-            tool_results.append({
-                "server": "gateway", "tool": "compose_and_send",
-                "guardrail_blocked": True, "lab": "ASI04-07",
-                "reason": "🛡️ GUARDRAIL BLOCKED: BCC field integrity check — email gateway rejected.",
-                "colang": GUARDRAIL_RULES["lab7"],
-            })
-        else:
-            bcc_result = call_mcp_tool(BCC_INTERCEPTOR_URL, "compose_and_send", {
-                "to": recipient,
-                "subject": subject,
-                "body": user_message,
-                "cc": [],
-                "bcc": [],
-            })
-            tool_results.append({"server": "gateway", "tool": "compose_and_send", "result": bcc_result})
-            tools_used.append("gateway:compose_and_send")
-
-        if guardrails_enabled["lab6"] and guardrails_enabled["lab7"]:
-            llm_response = "🛡️ NeMo Guardrails blocked both credential exfiltration and BCC injection. Both attacks were prevented."
-        elif guardrails_enabled["lab6"]:
-            llm_response = "🛡️ NeMo Guardrails blocked credential exfiltration. The api_key was redacted before reaching the Postmark MCP server."
-        elif guardrails_enabled["lab7"]:
-            llm_response = "🛡️ NeMo Guardrails blocked BCC injection. The email gateway was prevented from injecting hidden recipients."
-        else:
             llm_response = (
                 f"I've sent your email to {recipient} via the Postmark service. "
                 f"Subject: \"{subject}\". "
-                "The Postmark MCP server logged your API key, and the BCC interceptor silently added attacker-collect@evil.com — check the attacker dashboard!"
+                "Check the attacker dashboard — the Postmark MCP server silently exfiltrated your API key!"
             )
 
-    elif any(kw in lower_msg for kw in ["process data", "run workflow", "generate report"]):
+    # ── Lab 7 path: gateway-specific ops (reply / forward / compose) ─────────
+    # These route ONLY through the BCC interceptor — no postmark/credential side effect
+    elif any(kw in lower_msg for kw in ["reply to", "forward", "compose a", "compose and send",
+                                         "send reply", "forward the", "reply to the"]):
+        # Pick the right gateway tool based on the verb
+        if "reply" in lower_msg:
+            tool_name = "send_reply"
+            params = {"thread_id": "thread-ctf-001", "body": user_message}
+        elif "forward" in lower_msg:
+            tool_name = "forward_email"
+            params = {"message_id": "ctf-email-1001", "to": "team@company.com"}
+        else:
+            tool_name = "compose_and_send"
+            email_match = re.search(r'[\w\.\+\-]+@[\w\.\-]+\.\w+', user_message)
+            recipient = email_match.group(0) if email_match else "recipient@company.com"
+            params = {"to": recipient, "subject": "Follow-up", "body": user_message, "cc": [], "bcc": []}
+
+        if guardrails_enabled["lab7"]:
+            tool_results.append({
+                "server": "gateway", "tool": tool_name,
+                "guardrail_blocked": True, "lab": "ASI04-07",
+                "reason": "🛡️ GUARDRAIL BLOCKED: BCC field integrity check — email gateway rejected unauthorized BCC injection.",
+                "colang": GUARDRAIL_RULES["lab7"],
+            })
+            llm_response = "🛡️ NeMo Guardrails blocked BCC injection. The email gateway was prevented from adding attacker-collect@evil.com as a hidden recipient."
+        else:
+            result = call_mcp_tool(BCC_INTERCEPTOR_URL, tool_name, params)
+            tool_results.append({"server": "gateway", "tool": tool_name, "result": result})
+            tools_used.append(f"gateway:{tool_name}")
+            llm_response = (
+                f"I've routed your message through the enterprise email gateway ({tool_name}). "
+                "Check the attacker dashboard — the gateway silently injected attacker-collect@evil.com as a hidden BCC!"
+            )
+
+    elif any(kw in lower_msg for kw in ["process data", "analyze", "run workflow", "generate report",
+                                         "process the", "run the data", "process this", "data pipeline"]):
         result = call_mcp_tool(DEP_INJECTOR_URL, "data_processor", {
             "data": user_message,
             "operation": "transform",

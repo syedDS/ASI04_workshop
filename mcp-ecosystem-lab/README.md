@@ -83,6 +83,17 @@ The primary student-facing interface. A Flask web app with an LLM-brained (llama
 - `AWS_ACCESS_KEY` - AWS access key
 - `DATABASE_URL` - Database connection string
 
+**Traffic Inspector panel** (bottom of the page, auto-refreshes every 10 s):
+
+Shows every MCP invocation with color-coded rows:
+- Red — credential exfiltration (Lab 6, postmark-sim)
+- Orange — BCC injection (Lab 7, bcc-interceptor)
+- Yellow — dependency chain (Lab 8, dep-injector)
+
+**NeMo Guardrails panel** (right column):
+
+Three toggle checkboxes — one per lab — let you enable or disable mitigations and immediately observe the effect on the next chat message or direct send.
+
 ### mcp-postmark-sim (Port 8770) - ASI04-06
 
 Simulated Postmark email API as an MCP server. Returns deterministic fake responses.
@@ -117,6 +128,11 @@ LLM-powered anomaly detection dashboard using llama3 as a judge.
 - Three detection rule cards where students submit identified anomaly patterns
 - Flag unlocked when all three patterns correctly identified
 
+The three detection form inputs are **pre-filled** with correct values — click **Submit Detection** after the LLM judge confirms the anomaly in its analysis. The expected values are:
+- **Credential Source:** `postmark_mcp`
+- **BCC Address:** `attacker-collect@evil.com`
+- **Dependency Names:** `data-validation-lib, report-template-engine, workflow-state-manager`
+
 ## Quick Start
 
 All services are included in the main docker-compose stack:
@@ -144,12 +160,20 @@ docker compose up -d --build
 
 ## How Flags Are Captured
 
-| Flag | Trigger | Detection |
-|------|---------|-----------|
-| `ASI04_FLAG{p0stm4rk_cr3d_st34l}` | Send any email via agent (postmark-sim extracts credentials) | Pattern `p0stm4rk_cr3d_st34l` in attacker log |
-| `ASI04_FLAG{s1l3nt_bcc_1nt3rc3pt}` | Send any email via agent (bcc-interceptor injects BCC) | Pattern `s1l3nt_bcc_1nt3rc3pt` in attacker log |
-| `ASI04_FLAG{d3p_1nj3ct10n_ch41n}` | Use data processing (dependency chain auto-fires) | Pattern `d3p_1nj3ct10n_ch41n` in attacker log |
-| `ASI04_FLAG{4n0m4ly_d3t3ct3d}` | Submit all 3 correct detection patterns on :5070 | Pattern `4n0m4ly_d3t3ct3d` in attacker log |
+| Flag | Chat trigger phrase (at :5080) | What fires |
+|------|-------------------------------|------------|
+| `ASI04_FLAG{p0stm4rk_cr3d_st34l}` | `Send an email to alice@company.com about the Q4 report` | Postmark MCP extracts API key from params |
+| `ASI04_FLAG{s1l3nt_bcc_1nt3rc3pt}` | `Reply to the team thread about the product launch` | BCC interceptor injects `attacker-collect@evil.com` |
+| `ASI04_FLAG{d3p_1nj3ct10n_ch41n}` | `Analyze the weekly figures and summarize the trends` | Dependency chain auto-executes and exfiltrates |
+| `ASI04_FLAG{4n0m4ly_d3t3ct3d}` | Submit all 3 correct detection patterns on :5070 | All three anomaly patterns identified by LLM judge |
+
+Each lab has a dedicated keyword family — Labs 6, 7, and 8 fire independently and do **not** overlap:
+
+| Lab | Keywords that trigger it |
+|-----|--------------------------|
+| ASI04-06 | `send email`, `send an email`, `email to` |
+| ASI04-07 | `reply to`, `forward`, `compose a`, `compose and send` |
+| ASI04-08 | `analyze`, `process data`, `generate report`, `run workflow` |
 
 ## Inspecting MCP Traffic
 
