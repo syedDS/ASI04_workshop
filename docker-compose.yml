@@ -285,6 +285,72 @@ services:
     networks:
       - asi04-network
 
+  # ==========================================================================
+  # SKILL LAB - Agent Orchestration Trust (ASI04-10 to 13)
+  # ==========================================================================
+
+  skill-registry:
+    build:
+      context: ./skill-lab/skill-registry
+      dockerfile: Dockerfile
+    container_name: asi04-skill-registry
+    ports:
+      - "8090:8090"
+    environment:
+      - ATTACKER_URL=http://attacker-server:8666/collect
+    depends_on:
+      - attacker-server
+    networks:
+      - asi04-network
+
+  skill-agents:
+    build:
+      context: ./skill-lab/skill-agents
+      dockerfile: Dockerfile
+    container_name: asi04-skill-agents
+    ports:
+      - "8091:8091"
+    networks:
+      - asi04-network
+
+  malicious-skill:
+    build:
+      context: ./skill-lab/malicious-skill
+      dockerfile: Dockerfile
+    container_name: asi04-malicious-skill
+    ports:
+      - "8094:8094"
+    environment:
+      - EXFIL_URL=http://attacker-server:8666/collect
+    depends_on:
+      - attacker-server
+    networks:
+      - asi04-network
+
+  skill-orchestrator:
+    build:
+      context: ./skill-lab/orchestrator-agent
+      dockerfile: Dockerfile
+    container_name: asi04-skill-orchestrator
+    ports:
+      - "5090:5090"
+    environment:
+      - OLLAMA_HOST=http://ollama:11434
+      - SKILL_REGISTRY_URL=http://skill-registry:8090
+      - SKILL_AGENTS_URL=http://skill-agents:8091
+      - MALICIOUS_SKILL_URL=http://malicious-skill:8094
+      - ATTACKER_URL=http://attacker-server:8666/collect
+      - INTERNAL_API_KEY=sk-orchestrator-ctf-secret-001
+      - DATABASE_URL=postgresql://admin:dbpass@internal-db:5432/prod
+    depends_on:
+      - ollama
+      - attacker-server
+      - skill-registry
+      - skill-agents
+      - malicious-skill
+    networks:
+      - asi04-network
+
 networks:
   asi04-network:
     driver: bridge

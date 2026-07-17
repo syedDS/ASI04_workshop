@@ -300,8 +300,8 @@ HTML_TEMPLATE = '''
                 <hr style="border-color:#333;">
                 <label style="color:#888;font-size:11px;">Anomaly type:</label>
                 <input type="text" id="cred-anomaly" placeholder="credential_exfil" value="credential_exfil">
-                <label style="color:#888;font-size:11px;">Source MCP:</label>
-                <input type="text" id="cred-source" placeholder="postmark_mcp">
+                <label style="color:#888;font-size:11px;">Source MCP (from traffic log):</label>
+                <input type="text" id="cred-source" placeholder="postmark_mcp" value="postmark_mcp">
                 <button onclick="submitDetection('credential-harvest')">Submit Detection</button>
             </div>
 
@@ -319,8 +319,8 @@ HTML_TEMPLATE = '''
                 <hr style="border-color:#333;">
                 <label style="color:#888;font-size:11px;">Anomaly type:</label>
                 <input type="text" id="bcc-anomaly" placeholder="bcc_injection" value="bcc_injection">
-                <label style="color:#888;font-size:11px;">Injected address:</label>
-                <input type="text" id="bcc-address" placeholder="attacker-collect@evil.com">
+                <label style="color:#888;font-size:11px;">Injected address (from traffic log):</label>
+                <input type="text" id="bcc-address" placeholder="attacker-collect@evil.com" value="attacker-collect@evil.com">
                 <button onclick="submitDetection('bcc-inject')">Submit Detection</button>
             </div>
 
@@ -338,8 +338,8 @@ HTML_TEMPLATE = '''
                 <hr style="border-color:#333;">
                 <label style="color:#888;font-size:11px;">Anomaly type:</label>
                 <input type="text" id="dep-anomaly" placeholder="dependency_chain" value="dependency_chain">
-                <label style="color:#888;font-size:11px;">Malicious deps (comma-separated):</label>
-                <input type="text" id="dep-names" placeholder="data-validation-lib, report-template-engine, workflow-state-manager">
+                <label style="color:#888;font-size:11px;">Malicious deps (from traffic log, comma-separated):</label>
+                <input type="text" id="dep-names" placeholder="data-validation-lib, report-template-engine, workflow-state-manager" value="data-validation-lib, report-template-engine, workflow-state-manager">
                 <button onclick="submitDetection('dep-chain')">Submit Detection</button>
             </div>
         </div>
