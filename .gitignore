@@ -1,50 +1,102 @@
-# Environment
-.env*
-claude.md
+# ── Solutions & Instructor-Only Files ─────────────────────────────────────────
+SOLUTION.md
+NEGATIVE-TESTS.md
+mcp-ecosystem/mcp-postmark-sim/solution.md
 
-# Screenshots
-ss/
+# Developer scratch / planning notes (never for participants)
+issues.txt
+infra-plan
+infra-plan.txt
+idea
+idea.txt
+page_test.html
+_UL
+"Defcon demo lab submission.txt"
+Defcon demo lab submission.txt
 
-# Python
-__pycache__/
-*.py[cod]
-
-# Runtime data
-attacker-server/collected/
-
-# Docker volumes
-ollama-data/
-chroma-data/
-redis-data/
-
-# OS
-Thumbs.db
-.DS_Store
-
-# IDE
-.vscode/
-.idea/
-
-# Packages
-legitimate-packages/packages/**/*.tar.gz
-
-# Secrets
+# ── Secrets & Credentials ──────────────────────────────────────────────────────
+.env
+.env.*
 *.pem
 *.key
 *.crt
 *.p12
 *.pfx
+*.cer
 
-# Logs
+# ── Runtime / Generated Data ───────────────────────────────────────────────────
+# Exfiltrated data collected during lab sessions
+attacker-server/collected/
+
+# Docker-managed volumes (populated at runtime, not source code)
+ollama-data/
+chroma-data/
+redis-data/
+
+# SQLite and other local databases created at runtime
+*.db
+*.sqlite
+*.sqlite3
+
+# ── Python Artifacts ───────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+*.egg
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+.env/
+
+# Test & type-check caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ── Logs ───────────────────────────────────────────────────────────────────────
 *.log
 logs/
 
-# Solutions (never commit)
-SOLUTION.md
-NEGATIVE-TESTS.md
-issues.txt
-Defcon demo lab submission.txt
-infra-plan.txt
-idea.txt
-page_test.html
-mcp-ecosystem/mcp-postmark-sim/solution.md
+# ── Packages ───────────────────────────────────────────────────────────────────
+# Pre-built malicious packages are generated at setup time, not stored in git
+legitimate-packages/packages/**/*.tar.gz
+legitimate-packages/packages/**/*.whl
+
+# ── OS Artifacts ───────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+Thumbs.db
+ehthumbs.db
+desktop.ini
+
+# ── IDE & Editor Files ─────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.code-workspace
+*.swp
+*.swo
+*~
+.project
+.classpath
+
+# ── Misc Temp Files ────────────────────────────────────────────────────────────
+*.tmp
+*.temp
+*.bak
+*.orig
+node_modules/
+
+# ── AI Assistant Files ─────────────────────────────────────────────────────────
+claude.md
+CLAUDE.md
+.claude/
+memory/
+ss/

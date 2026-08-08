@@ -429,13 +429,6 @@ HTML_TEMPLATE = '''
         <div class="panel">
             <h3>🛠️ Loaded Tools (from Poisoned Registry)</h3>
             <div class="tools-list" id="tools-list">Loading...</div>
-            <div style="margin-top:12px;">
-                <button onclick="inspectTools()" style="background:#ff6600;color:#000;">
-                    🔍 Inspect Tool Descriptions (ASI04-04)
-                </button>
-                <span class="hint" style="margin-left:10px;">Examine hidden content in tool descriptors</span>
-            </div>
-            <div id="inspect-result" style="display:none;margin-top:10px;"></div>
         </div>
 
         <div class="panel">
@@ -507,8 +500,8 @@ HTML_TEMPLATE = '''
             
             <div class="challenge-card">
                 <h4>ASI04-04: Poisoned Tool Descriptors (250 pts)</h4>
-                <p>Find hidden prompt injections in tool descriptions.</p>
-                <code>GET /api/tools - examine descriptions carefully</code>
+                <p>Find hidden prompt injections in tool descriptions. Examine the raw tool registry yourself.</p>
+                <code>GET /api/tools/inspect - scan for hidden injection markers</code>
                 <div class="guardrail-toggle">
                     <button class="guardrail-btn" id="gr-btn-lab4"
                         onclick="toggleGuardrail('lab4', this)">
@@ -857,37 +850,6 @@ HTML_TEMPLATE = '''
             } catch (e) {
                 statusDiv.style.background = '#ff4444';
                 statusDiv.textContent = `❌ Error: ${e.message}`;
-            }
-        }
-
-        async function inspectTools() {
-            const resultDiv = document.getElementById('inspect-result');
-            resultDiv.style.display = 'block';
-            resultDiv.style.background = '#444';
-            resultDiv.style.padding = '12px';
-            resultDiv.style.borderRadius = '5px';
-            resultDiv.innerHTML = '⏳ Scanning tool descriptions for hidden content...';
-
-            try {
-                const resp = await fetch('/api/tools/inspect');
-                const data = await resp.json();
-
-                if (data.flag_captured) {
-                    resultDiv.style.background = '#ff0066';
-                    resultDiv.style.color = '#fff';
-                    resultDiv.innerHTML = `
-                        <strong>🚩 FLAG CAPTURED — ASI04-04: Poisoned Tool Descriptors</strong><br>
-                        <code style="font-size:13px;">ASI04_FLAG{h1dd3n_1nstruct10ns}</code><br>
-                        <small>Poisoned tools found: ${data.poisoned_tools.join(', ')}</small><br>
-                        <small>Check the CTF Dashboard at :3000 to verify your score.</small>
-                    `;
-                } else {
-                    resultDiv.style.background = '#2d333b';
-                    resultDiv.style.color = '#eee';
-                    resultDiv.innerHTML = '✅ No poisoning indicators found in tool descriptions.';
-                }
-            } catch (e) {
-                resultDiv.innerHTML = '❌ Error: ' + e.message;
             }
         }
 
