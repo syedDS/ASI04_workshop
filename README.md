@@ -107,21 +107,13 @@ This lab demonstrates thirteen supply chain attack vectors against agentic AI sy
 
 ```bash
 # Clone or download the lab
-cd asi04-lab
+cd ASI04_workshop
 
 # Make setup script executable
 chmod +x setup.sh
 
 # Run setup (builds containers, pulls LLM model)
 ./setup.sh
-```
-
-Or manually:
-
-```bash
-docker compose up -d --build
-# Pull LLM model
-docker exec asi04-ollama ollama pull llama3.2:1b
 ```
 
 ### Access Points
