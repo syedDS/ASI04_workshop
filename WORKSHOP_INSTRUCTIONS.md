@@ -33,9 +33,8 @@ Both commands must succeed before proceeding.
 ## Getting the Lab Files
 
 Download or clone the lab repository to your local machine and navigate into the directory:
-
-```bash
-cd ASI4-LAB-complete
+git clone https://github.com/syedDS/ASI04_workshop
+cd ASI04_workshop
 ```
 
 All subsequent commands must be run from this directory.
