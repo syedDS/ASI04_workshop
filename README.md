@@ -1,6 +1,7 @@
 # ASI04: Agentic Supply Chain Vulnerabilities Lab
 
 A hands-on security training lab focused on **ASI04** from the [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/).
+<img width="683" height="463" alt="image" src="https://github.com/user-attachments/assets/f411615e-08b4-4a89-9b44-8093bc7f5630" />
 
 ## Overview
 
