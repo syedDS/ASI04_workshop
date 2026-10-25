@@ -1,13 +1,64 @@
 # ASI04: Agentic Supply Chain Vulnerabilities Lab
 
-A hands-on security training lab focused on **ASI04** from the [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/).
-<img width="683" height="463" alt="image" src="https://github.com/user-attachments/assets/f411615e-08b4-4a89-9b44-8093bc7f5630" />
+[![OWASP Project](https://img.shields.io/badge/OWASP-Project-3C873A?logo=owasp&logoColor=white)](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/)
+[![Security Training Lab](https://img.shields.io/badge/Type-Security%20Training%20Lab-2457A7)](#overview)
+[![Challenges](https://img.shields.io/badge/Challenges-13-6F42C1)](#overview)
+[![Points](https://img.shields.io/badge/CTF%20Points-4%2C000-orange)](#overview)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](../../pulls)
 
-##Check out a walkthrough
-https://www.youtube.com/watch?v=DXlq9POfbgo
+A hands-on security training lab focused on **ASI04: Agentic Supply Chain Vulnerabilities** from the [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/resource/owasp-top-10-for-agentic-applications-for-2026/).
+
+<img width="683" height="463" alt="ASI04 Agentic Supply Chain Vulnerabilities Lab" src="https://github.com/user-attachments/assets/f411615e-08b4-4a89-9b44-8093bc7f5630" />
+
+## Featured At
+
+> Conference and community presentations featuring the ASI04 hands-on lab.
+
+[![RSA Conference 2026]([https://img.shields.io/badge/RSA%20Conference-2026-111111?style=for-the-badge](https://www.cloud-village.org/rsa26))](#featured-at)
+[![DEF CON 26]([https://img.shields.io/badge/DEF%20CON-26-red?style=for-the-badge](https://redteamvillage.io/schedule/))](#featured-at)
+[![BruCON 26]([https://img.shields.io/badge/BruCON-26-7B2D8E?style=for-the-badge](https://www.brucon.org/conference))](#featured-at)
+[![Black Hat Europe Arsenal London 2026]([https://img.shields.io/badge/Black%20Hat%20Europe%20Arsenal-London%202026-black?style=for-the-badge](https://blackhat.com/europe/arsenal/schedule/presenters.html#aamiruddin-syed-49568))](#featured-at)
+
+- **RSA Conference 2026**
+- **DEF CON 26**
+- **BruCON 26**
+- **Black Hat Europe Arsenal, London 2026** — upcoming presentation
+
+## Lab Walkthrough
+
+[![Watch the ASI04 lab walkthrough](https://img.shields.io/badge/YouTube-Watch%20Lab%20Walkthrough-red?logo=youtube&logoColor=white)](https://www.youtube.com/watch?v=DXlq9POfbgo)
+
 ## Overview
 
 This lab demonstrates thirteen supply chain attack vectors against agentic AI systems, organized into three modules:
+
+## 🌍 Conference Presentations
+
+> **From hands-on labs to the global security community.**  
+> The ASI04 lab brings practical, reproducible agentic AI supply-chain attacks and mitigations to cybersecurity audiences.
+
+### 🎤 Presented at
+
+| Conference | Status |
+|---|---|
+| **RSA Conference 2026** | ✅ Presented |
+| **DEF CON 26** | ✅ Presented |
+| **BruCON 26** | ✅ Presented |
+| **Black Hat Europe Arsenal — London 2026** | 📅 Upcoming presentation |
+
+### 🔬 What the lab demonstrates
+
+Across **13 hands-on challenges**, participants explore supply-chain trust failures involving:
+
+- 📦 **Package ecosystems** — typosquatting and dependency confusion
+- 🔌 **MCP servers and tools** — malicious servers, credential exposure, and poisoned tool descriptors
+- 📚 **RAG pipelines** — knowledge-base poisoning and untrusted retrieved content
+- 🧩 **Agent skills** — identity spoofing, output injection, capability scope creep, and version downgrade
+- 🛡️ **Defensive controls** — practical guardrails and detection approaches for each attack class
+
+The goal is to help security practitioners move beyond theory and **reproduce, investigate, and mitigate real-world agentic AI supply-chain risks** in a controlled training environment.
+
+---
 
 ### Core Challenges - Supply Chain Fundamentals (1,350 pts)
 
