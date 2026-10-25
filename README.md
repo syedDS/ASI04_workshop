@@ -12,17 +12,14 @@ A hands-on security training lab focused on **ASI04: Agentic Supply Chain Vulner
 
 ## Featured At
 
-> Conference and community presentations featuring the ASI04 hands-on lab.
+The ASI04 hands-on lab has been presented at cybersecurity conferences and community events.
 
-[![RSA Conference 2026]([https://img.shields.io/badge/RSA%20Conference-2026-111111?style=for-the-badge](https://www.cloud-village.org/rsa26))](#featured-at)
-[![DEF CON 26]([https://img.shields.io/badge/DEF%20CON-26-red?style=for-the-badge](https://redteamvillage.io/schedule/))](#featured-at)
-[![BruCON 26]([https://img.shields.io/badge/BruCON-26-7B2D8E?style=for-the-badge](https://www.brucon.org/conference))](#featured-at)
-[![Black Hat Europe Arsenal London 2026]([https://img.shields.io/badge/Black%20Hat%20Europe%20Arsenal-London%202026-black?style=for-the-badge](https://blackhat.com/europe/arsenal/schedule/presenters.html#aamiruddin-syed-49568))](#featured-at)
-
-- **RSA Conference 2026**
-- **DEF CON 26**
-- **BruCON 26**
-- **Black Hat Europe Arsenal, London 2026** — upcoming presentation
+| Conference | Presentation status | Event details |
+|---|---|---|
+| **RSA Conference 2026** | Presented | [View event](https://www.cloud-village.org/rsa26) |
+| **DEF CON 26** | Presented | [Red Team Village schedule](https://redteamvillage.io/schedule/) |
+| **BruCON 26** | Presented | [BruCON conference](https://www.brucon.org/conference) |
+| **Black Hat Europe Arsenal, London 2026** | Upcoming | [Presenter listing](https://blackhat.com/europe/arsenal/schedule/presenters.html#aamiruddin-syed-49568) |
 
 ## Lab Walkthrough
 
@@ -31,20 +28,6 @@ A hands-on security training lab focused on **ASI04: Agentic Supply Chain Vulner
 ## Overview
 
 This lab demonstrates thirteen supply chain attack vectors against agentic AI systems, organized into three modules:
-
-## 🌍 Conference Presentations
-
-> **From hands-on labs to the global security community.**  
-> The ASI04 lab brings practical, reproducible agentic AI supply-chain attacks and mitigations to cybersecurity audiences.
-
-### 🎤 Presented at
-
-| Conference | Status |
-|---|---|
-| **RSA Conference 2026** | ✅ Presented |
-| **DEF CON 26** | ✅ Presented |
-| **BruCON 26** | ✅ Presented |
-| **Black Hat Europe Arsenal — London 2026** | 📅 Upcoming presentation |
 
 ### 🔬 What the lab demonstrates
 
